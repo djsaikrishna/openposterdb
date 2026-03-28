@@ -364,6 +364,7 @@ async fn resolve_with_ratings(
         &state.tmdb,
         state.omdb.as_ref(),
         state.mdblist.as_ref(),
+        state.trakt.as_ref(),
         &state.ratings_cache,
     )
     .await?;
