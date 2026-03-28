@@ -48,8 +48,8 @@ jobs:
           file: Containerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,"name=ghcr.io/${{ steps.meta.outputs.image_name }},${{ secrets.DOCKERHUB_USERNAME }}/openposterdb",push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.platform }}
-          cache-to: type=gha,scope=${{ matrix.platform }},mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ steps.meta.outputs.image_name }}-buildcache:${{ steps.meta.outputs.platform_pair }}
+          cache-to: type=registry,ref=ghcr.io/${{ steps.meta.outputs.image_name }}-buildcache:${{ steps.meta.outputs.platform_pair }},compression=zstd,mode=max
 
       - name: Export digest
         run: |
