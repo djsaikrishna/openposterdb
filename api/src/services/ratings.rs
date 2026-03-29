@@ -351,9 +351,10 @@ async fn fetch_trakt_rating(
         }
         MediaType::Episode => {
             let ep = resolved.episode.as_ref()?;
+            let show_imdb_id = ep.show_imdb_id.as_deref()?;
             client
                 .get_episode_rating(
-                    &ep.show_tmdb_id.to_string(),
+                    show_imdb_id,
                     ep.season_number,
                     ep.episode_number,
                 )
