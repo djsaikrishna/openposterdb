@@ -35,8 +35,8 @@ docker run -d \
   -e TMDB_API_KEY=your_key \
   -e MDBLIST_API_KEY=your_key \
   -e JWT_SECRET=$(openssl rand -hex 32) \
-  -v openposterdb-cache:/app/cache \
-  -v openposterdb-db:/app/db \
+  -v openposterdb-cache:/data/cache \
+  -v openposterdb-db:/data/db \
   pnrxa/openposterdb
 ```
 
