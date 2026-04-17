@@ -29,7 +29,7 @@ const labelStyle = ref('default')
 const badgeSize = ref('default')
 const ratingsLimit = ref('default')
 const badgeDirection = ref('default')
-const posterPosition = ref('default')
+const imagePosition = ref('default')
 const imageSource = ref('default')
 const textless = ref('default')
 const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
@@ -69,9 +69,9 @@ watch(imageType, (newType) => {
   if (!validValues.includes(imageSize.value)) {
     imageSize.value = 'default'
   }
-  if (newType !== 'poster' && newType !== 'episode') {
+  if (newType !== 'poster' && newType !== 'episode' && newType !== 'backdrop') {
     badgeDirection.value = 'default'
-    posterPosition.value = 'default'
+    imagePosition.value = 'default'
   }
   if (newType !== 'poster') {
     textless.value = 'default'
@@ -107,8 +107,8 @@ const queryString = computed(() => {
   if (labelStyle.value !== 'default') params.set('label_style', labelStyle.value)
   if (badgeSize.value !== 'default') params.set('badge_size', badgeSize.value)
   if (ratingsLimit.value !== 'default') params.set('ratings_limit', ratingsLimit.value)
-  if ((imageType.value === 'poster' || imageType.value === 'episode') && badgeDirection.value !== 'default') params.set('badge_direction', badgeDirection.value)
-  if ((imageType.value === 'poster' || imageType.value === 'episode') && posterPosition.value !== 'default') params.set('position', posterPosition.value)
+  if (imageType.value !== 'logo' && badgeDirection.value !== 'default') params.set('badge_direction', badgeDirection.value)
+  if (imageType.value !== 'logo' && imagePosition.value !== 'default') params.set('position', imagePosition.value)
   if (imageType.value !== 'episode' && imageSource.value !== 'default') params.set('image_source', imageSource.value)
   if (imageType.value === 'poster' && textless.value !== 'default') params.set('textless', textless.value)
   if (imageType.value === 'episode' && blur.value !== 'default') params.set('blur', blur.value)
@@ -262,9 +262,9 @@ async function handleFetch() {
               </SelectContent>
             </Select>
           </template>
-          <template v-if="imageType === 'poster' || imageType === 'episode'">
-            <Select v-model="posterPosition">
-              <SelectTrigger id="free-poster-position" aria-label="Position" class="bg-background">
+          <template v-if="imageType !== 'logo'">
+            <Select v-model="imagePosition">
+              <SelectTrigger id="free-image-position" aria-label="Position" class="bg-background">
                 <SelectValue placeholder="Position: default" />
               </SelectTrigger>
               <SelectContent>
@@ -285,7 +285,6 @@ async function handleFetch() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="default">Direction: default</SelectItem>
-                <SelectItem value="d">Auto</SelectItem>
                 <SelectItem value="h">Horizontal</SelectItem>
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>

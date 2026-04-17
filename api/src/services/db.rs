@@ -486,7 +486,7 @@ pub fn default_backdrop_position() -> BadgePosition {
 }
 
 pub fn default_backdrop_badge_direction() -> BadgeDirection {
-    BadgeDirection::Vertical
+    BadgeDirection::Default
 }
 
 // --- Badge size ---
@@ -905,6 +905,11 @@ mod tests {
     #[test]
     fn default_poster_badge_direction_returns_default() {
         assert_eq!(default_poster_badge_direction(), BadgeDirection::Default);
+    }
+
+    #[test]
+    fn default_backdrop_badge_direction_returns_default() {
+        assert_eq!(default_backdrop_badge_direction(), BadgeDirection::Default);
     }
 
     #[test]
