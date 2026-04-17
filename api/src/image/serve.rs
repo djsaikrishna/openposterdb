@@ -339,11 +339,17 @@ async fn upsert_available_ratings_cached(
 /// episode is transparently re-resolved to its parent series *before*
 /// fetching ratings. This avoids wasted episode-level TMDB calls when the
 /// caller only needs series-level data (poster, logo, backdrop endpoints).
+///
+/// When `skip_ratings` is true, the external ratings fetch (OMDB, MDBList,
+/// TMDB) is skipped entirely and an empty `RatingsResult` is returned.
+/// Use this when the caller's ratings limit is 0, fetching ratings only
+/// to discard them wastes rate-limit quota and stalls image delivery.
 async fn resolve_with_ratings(
     state: &AppState,
     id_type: IdType,
     id_value: &str,
     uplift_episodes: bool,
+    skip_ratings: bool,
 ) -> Result<(id::ResolvedId, ratings::RatingsResult, CrossIdInfo), AppError> {
     let id_resolve_start = Instant::now();
     let mut resolved = id::resolve(id_type, id_value, &state.tmdb, &state.id_cache).await?;
@@ -359,14 +365,18 @@ async fn resolve_with_ratings(
 
     let id_resolve_ms = id_resolve_start.elapsed().as_millis() as u64;
 
-    let ratings_result = ratings::fetch_ratings(
-        &resolved,
-        &state.tmdb,
-        state.omdb.as_ref(),
-        state.mdblist.as_ref(),
-        &state.ratings_cache,
-    )
-    .await?;
+    let ratings_result = if skip_ratings {
+        ratings::RatingsResult::default()
+    } else {
+        ratings::fetch_ratings(
+            &resolved,
+            &state.tmdb,
+            state.omdb.as_ref(),
+            state.mdblist.as_ref(),
+            &state.ratings_cache,
+        )
+        .await?
+    };
 
     if id_resolve_ms > SLOW_REQUEST_MS {
         tracing::warn!(
@@ -614,7 +624,14 @@ pub async fn handle_inner(
     // available sources, avoiding external API calls entirely on cache hits.
     if !use_fanart {
         let fast_path_start = Instant::now();
-        if let Some(available) = read_available_ratings_cached(state, &id_key).await {
+        // When ratings are disabled the suffix is always "@" regardless of which
+        // sources a title actually has, skip the SQLite lookup entirely.
+        let fast_path_available = if settings.ratings_limit == 0 {
+            Some(String::new())
+        } else {
+            read_available_ratings_cached(state, &id_key).await
+        };
+        if let Some(available) = fast_path_available {
             let available_ratings_ms = fast_path_start.elapsed().as_millis() as u64;
             let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.ratings_limit);
             let suffix = settings_cache_suffix_with_ratings(&settings, cache::ImageType::Poster, image_size, &ratings_suffix);
@@ -666,14 +683,17 @@ pub async fn handle_inner(
     // parent series — the poster endpoint returns series-level assets.
     let slow_path_start = Instant::now();
     let resolve_start = Instant::now();
+    let skip_ratings = settings.ratings_limit == 0;
     let (resolved, ratings_result, cross_ids) =
-        resolve_with_ratings(state, id_type, id_value, true).await?;
+        resolve_with_ratings(state, id_type, id_value, true, skip_ratings).await?;
     let resolve_ms = resolve_start.elapsed().as_millis() as u64;
 
     // Persist available sources for future fast-path lookups (always write,
     // even with external_cache_only — this is an optimization index, not a
     // disk cache, and the fast path depends on it).
-    {
+    // Skip when ratings are disabled: we have no real source data to store,
+    // and writing "" would erase any previously cached good data.
+    if !skip_ratings {
         let sources = ratings::available_sources_string(&ratings_result.badges);
         upsert_available_ratings_cached(state, &id_key, &sources, cross_ids.release_date.as_deref()).await;
     }
@@ -982,9 +1002,10 @@ fn trigger_background_refresh(
     let settings = settings.clone();
     let cross_id = Some((id_type, cache_suffix.to_string()));
     spawn_background_refresh(state, cache_key, cache_path, cross_id, async move {
+        let skip_ratings = settings.ratings_limit == 0;
         let (resolved, ratings_result, cross_ids) =
-            resolve_with_ratings(&state2, id_type, &id_value, true).await?;
-        {
+            resolve_with_ratings(&state2, id_type, &id_value, true, skip_ratings).await?;
+        if !skip_ratings {
             let id_key = format!("{}/{id_value}", id_type.as_str());
             let sources = ratings::available_sources_string(&ratings_result.badges);
             upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
@@ -1022,17 +1043,18 @@ fn trigger_logo_backdrop_refresh(
         // Logos/backdrops never use textless
         let textless = false;
 
-        let (resolved, ratings_result, cross_ids) =
-            resolve_with_ratings(&state2, id_type, &id_value, true).await?;
-        {
-            let id_key = format!("{}/{id_value}", id_type.as_str());
-            let sources = ratings::available_sources_string(&ratings_result.badges);
-            upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
-        }
         let type_ratings_limit = match lb_kind {
             LogoBackdropKind::Logo => settings.logo_ratings_limit,
             LogoBackdropKind::Backdrop => settings.backdrop_ratings_limit,
         };
+        let skip_ratings = type_ratings_limit == 0;
+        let (resolved, ratings_result, cross_ids) =
+            resolve_with_ratings(&state2, id_type, &id_value, true, skip_ratings).await?;
+        if !skip_ratings {
+            let id_key = format!("{}/{id_value}", id_type.as_str());
+            let sources = ratings::available_sources_string(&ratings_result.badges);
+            upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
+        }
         let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, type_ratings_limit);
 
         let label = kind.label();
@@ -1172,9 +1194,10 @@ fn trigger_episode_refresh(
     let settings = settings.clone();
     let cross_id = Some((id_type, cache_suffix.to_string()));
     spawn_background_refresh(state, cache_key, cache_path, cross_id, async move {
+        let skip_ratings = settings.episode_ratings_limit == 0;
         let (resolved, ratings_result, cross_ids) =
-            resolve_with_ratings(&state2, id_type, &id_value, false).await?;
-        {
+            resolve_with_ratings(&state2, id_type, &id_value, false, skip_ratings).await?;
+        if !skip_ratings {
             let id_key = format!("{}/{id_value}", id_type.as_str());
             let sources = ratings::available_sources_string(&ratings_result.badges);
             upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
@@ -1584,7 +1607,13 @@ pub async fn handle_episode_inner(
 
     // Fast path: try to reconstruct the cache key from SQLite-stored available
     // sources, avoiding external API calls entirely on cache hits.
-    if let Some(available) = read_available_ratings_cached(state, &id_key).await {
+    // When ratings are disabled the suffix is always "@", skip the SQLite lookup.
+    let fast_path_available = if settings.episode_ratings_limit == 0 {
+        Some(String::new())
+    } else {
+        read_available_ratings_cached(state, &id_key).await
+    };
+    if let Some(available) = fast_path_available {
         let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.episode_ratings_limit);
         let suffix = settings_cache_suffix_with_ratings(&settings, cache::ImageType::Episode, image_size, &ratings_suffix);
         let cache_value = format!("{id_value}{suffix}");
@@ -1601,8 +1630,9 @@ pub async fn handle_episode_inner(
     }
 
     // Slow path: resolve ID and fetch ratings (no episode uplift — this IS the episode endpoint)
+    let skip_ratings = settings.episode_ratings_limit == 0;
     let (resolved, ratings_result, cross_ids) =
-        resolve_with_ratings(state, id_type, id_value, false).await?;
+        resolve_with_ratings(state, id_type, id_value, false, skip_ratings).await?;
 
     // The episode endpoint only serves episodes — reject movies and series.
     if resolved.media_type != MediaType::Episode {
@@ -1621,8 +1651,8 @@ pub async fn handle_episode_inner(
         )));
     }
 
-    // Persist available sources for fast-path lookups
-    {
+    // Persist available sources for fast-path lookups.
+    if !skip_ratings {
         let sources = ratings::available_sources_string(&ratings_result.badges);
         upsert_available_ratings_cached(state, &id_key, &sources, cross_ids.release_date.as_deref()).await;
     }
@@ -1731,7 +1761,13 @@ pub async fn handle_logo_backdrop_inner(
 
     // Fast path: try to reconstruct the cache key from SQLite-stored available
     // sources, avoiding external API calls on cache hits.
-    if let Some(available) = read_available_ratings_cached(state, &id_key).await {
+    // When ratings are disabled the suffix is always "@", skip the SQLite lookup.
+    let fast_path_available = if type_ratings_limit == 0 {
+        Some(String::new())
+    } else {
+        read_available_ratings_cached(state, &id_key).await
+    };
+    if let Some(available) = fast_path_available {
         let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, type_ratings_limit);
         let suffix = settings_cache_suffix_with_ratings(settings, kind, image_size, &ratings_suffix);
         let cache_key = format!("{id_type_str}/{id_value}{variant}{suffix}");
@@ -1754,13 +1790,15 @@ pub async fn handle_logo_backdrop_inner(
 
     // Slow path: resolve ID and fetch ratings. Episodes are uplifted to
     // their parent series — logos/backdrops don't apply to episodes.
+    let skip_ratings = type_ratings_limit == 0;
     let (resolved, ratings_result, cross_ids) =
-        resolve_with_ratings(state, id_type, id_value, true).await?;
+        resolve_with_ratings(state, id_type, id_value, true, skip_ratings).await?;
 
     // Persist available sources for future fast-path lookups (always write,
     // even with external_cache_only — this is an optimization index, not a
     // disk cache, and the fast path depends on it).
-    {
+    // Skip when ratings are disabled: no real source data to store.
+    if !skip_ratings {
         let sources = ratings::available_sources_string(&ratings_result.badges);
         upsert_available_ratings_cached(state, &id_key, &sources, cross_ids.release_date.as_deref()).await;
     }
