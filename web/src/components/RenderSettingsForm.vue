@@ -80,7 +80,7 @@ const editPosterBadgeSize = ref(props.settings.poster_badge_size || 'm')
 const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
 const editBackdropPosition = ref(props.settings.backdrop_position || 'tr')
-const editBackdropBadgeDirection = ref(props.settings.backdrop_badge_direction || 'v')
+const editBackdropBadgeDirection = ref(props.settings.backdrop_badge_direction || 'd')
 const editEpisodeRatingsLimit = ref(props.settings.episode_ratings_limit ?? 1)
 const editEpisodeBadgeStyle = ref(props.settings.episode_badge_style || 'v')
 const editEpisodeLabelStyle = ref(props.settings.episode_label_style || 'o')
@@ -109,7 +109,7 @@ function applySettings(s: RenderSettings) {
   editLogoBadgeSize.value = s.logo_badge_size || 'm'
   editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
   editBackdropPosition.value = s.backdrop_position || 'tr'
-  editBackdropBadgeDirection.value = s.backdrop_badge_direction || 'v'
+  editBackdropBadgeDirection.value = s.backdrop_badge_direction || 'd'
   editEpisodeRatingsLimit.value = s.episode_ratings_limit ?? 1
   editEpisodeBadgeStyle.value = s.episode_badge_style || 'v'
   editEpisodeLabelStyle.value = s.episode_label_style || 'o'

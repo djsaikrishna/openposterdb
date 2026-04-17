@@ -208,7 +208,7 @@ describe('FreeApiKeyCard', () => {
     const wrapper = mountCard(true)
 
     // Set poster-only controls and general image controls
-    await setSelectById(wrapper, 'free-poster-position', 'tl')
+    await setSelectById(wrapper, 'free-image-position', 'tl')
     await setSelectById(wrapper, 'free-badge-direction', 'v')
     await setSelectById(wrapper, 'free-image-source', 'f')
     await setSelectById(wrapper, 'free-textless', 'true')
@@ -238,7 +238,7 @@ describe('FreeApiKeyCard', () => {
     const wrapper = mountCard(true)
     await setSelectById(wrapper, 'free-image-type', 'episode')
     await setSelectById(wrapper, 'free-badge-direction', 'v')
-    await setSelectById(wrapper, 'free-poster-position', 'tr')
+    await setSelectById(wrapper, 'free-image-position', 'tr')
     await setSelectById(wrapper, 'free-blur', 'true')
 
     const curlText = findCurlCode(wrapper).text()
@@ -294,8 +294,39 @@ describe('FreeApiKeyCard', () => {
     const wrapper = mountCard(true)
     await setSelectById(wrapper, 'free-image-type', 'episode')
 
-    expect(wrapper.find('#free-poster-position').exists()).toBe(true)
+    expect(wrapper.find('#free-image-position').exists()).toBe(true)
     expect(wrapper.find('#free-badge-direction').exists()).toBe(true)
+  })
+
+  it('backdrop keeps position and badge_direction controls', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+
+    expect(wrapper.find('#free-image-position').exists()).toBe(true)
+    expect(wrapper.find('#free-badge-direction').exists()).toBe(true)
+  })
+
+  it('backdrop queryString includes position and badge_direction', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    await setSelectById(wrapper, 'free-image-position', 'tl')
+    await setSelectById(wrapper, 'free-badge-direction', 'h')
+
+    const curlText = findCurlCode(wrapper).text()
+    expect(curlText).toContain('position=tl')
+    expect(curlText).toContain('badge_direction=h')
+  })
+
+  it('switching from backdrop to logo resets position and badge_direction', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    await setSelectById(wrapper, 'free-image-position', 'tl')
+    await setSelectById(wrapper, 'free-badge-direction', 'h')
+    expect(findCurlCode(wrapper).text()).toContain('position=tl')
+
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(findCurlCode(wrapper).text()).not.toContain('position=')
+    expect(findCurlCode(wrapper).text()).not.toContain('badge_direction=')
   })
 
   it('episode does not show textless control', async () => {
