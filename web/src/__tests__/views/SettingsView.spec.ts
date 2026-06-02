@@ -24,6 +24,7 @@ const defaultSettings = {
   fanart_available: true,
   ratings_limit: 3,
   ratings_order: 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
+  ratings_exclude: '',
   free_api_key_enabled: false,
   poster_position: 'bc',
   logo_ratings_limit: 3,

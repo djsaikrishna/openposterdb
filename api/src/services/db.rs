@@ -437,6 +437,11 @@ pub fn default_ratings_order() -> String {
     "mal,imdb,lb,rt,mc,rta,tmdb,trakt".to_string()
 }
 
+/// Default rating-source exclusion list: empty (exclude nothing).
+pub fn default_ratings_exclude() -> String {
+    String::new()
+}
+
 pub fn default_poster_position() -> BadgePosition {
     BadgePosition::BottomCenter
 }
@@ -603,17 +608,25 @@ pub fn validate_lang(lang: &str) -> Result<(), AppError> {
     }
 }
 
+/// Validate a comma-separated list of rating source keys to exclude from display.
+/// Same rules as `validate_ratings_order` (known keys, no duplicates, empty OK).
+pub fn validate_ratings_exclude(exclude: &str) -> Result<(), AppError> {
+    validate_ratings_order(exclude)
+}
+
 /// Validate the remaining string-based render settings that aren't covered by enum deserialization.
 pub fn validate_render_settings(
     lang: &str,
     ratings_limit: i32,
     ratings_order: &str,
+    ratings_exclude: &str,
     logo_ratings_limit: i32,
     backdrop_ratings_limit: i32,
     episode_ratings_limit: i32,
 ) -> Result<(), AppError> {
     validate_lang(lang)?;
     validate_ratings_order(ratings_order)?;
+    validate_ratings_exclude(ratings_exclude)?;
     for limit in [ratings_limit, logo_ratings_limit, backdrop_ratings_limit, episode_ratings_limit] {
         validate_ratings_limit(limit)?;
     }
@@ -778,6 +791,19 @@ mod tests {
     fn validate_ratings_order_rejects_duplicates() {
         assert!(validate_ratings_order("imdb,imdb").is_err());
         assert!(validate_ratings_order("rt,tmdb,rt").is_err());
+    }
+
+    #[test]
+    fn validate_ratings_exclude_accepts_empty_and_valid() {
+        assert!(validate_ratings_exclude("").is_ok());
+        assert!(validate_ratings_exclude("rt").is_ok());
+        assert!(validate_ratings_exclude("rt,tmdb,trakt").is_ok());
+    }
+
+    #[test]
+    fn validate_ratings_exclude_rejects_unknown_and_duplicate() {
+        assert!(validate_ratings_exclude("bogus").is_err());
+        assert!(validate_ratings_exclude("rt,rt").is_err());
     }
 
     #[test]
@@ -1649,6 +1675,7 @@ pub struct UpsertApiKeySettings<'a> {
     pub episode_position: &'a str,
     pub episode_badge_direction: &'a str,
     pub episode_blur: bool,
+    pub ratings_exclude: &'a str,
 }
 
 pub async fn upsert_api_key_settings(
@@ -1684,6 +1711,7 @@ pub async fn upsert_api_key_settings(
         episode_position: Set(params.episode_position.to_string()),
         episode_badge_direction: Set(params.episode_badge_direction.to_string()),
         episode_blur: Set(params.episode_blur),
+        ratings_exclude: Set(params.ratings_exclude.to_string()),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -1716,6 +1744,7 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::EpisodePosition,
                     api_key_settings::Column::EpisodeBadgeDirection,
                     api_key_settings::Column::EpisodeBlur,
+                    api_key_settings::Column::RatingsExclude,
                 ])
                 .to_owned(),
         )
@@ -1745,6 +1774,7 @@ pub struct RenderSettings {
     pub textless: bool,
     pub ratings_limit: i32,
     pub ratings_order: Arc<str>,
+    pub ratings_exclude: Arc<str>,
     pub is_default: bool,
     pub poster_position: BadgePosition,
     pub logo_ratings_limit: i32,
@@ -1778,6 +1808,7 @@ impl Default for RenderSettings {
             textless: false,
             ratings_limit: default_ratings_limit(),
             ratings_order: Arc::from("mal,imdb,lb,rt,mc,rta,tmdb,trakt"),
+            ratings_exclude: Arc::from(""),
             is_default: true,
             poster_position: BadgePosition::BottomCenter,
             logo_ratings_limit: default_logo_backdrop_ratings_limit(),
@@ -1830,6 +1861,7 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
             .and_then(|v| v.parse().ok())
             .unwrap_or(defaults.ratings_limit),
         ratings_order: arc_or("ratings_order", defaults.ratings_order),
+        ratings_exclude: arc_or("ratings_exclude", defaults.ratings_exclude),
         is_default: true,
         poster_position: global_or(globals, "poster_position", BadgePosition::parse, defaults.poster_position),
         logo_ratings_limit: globals
@@ -1882,6 +1914,7 @@ pub async fn get_effective_render_settings(
                 textless: s.textless,
                 ratings_limit: s.ratings_limit,
                 ratings_order: Arc::from(s.ratings_order.as_str()),
+                ratings_exclude: Arc::from(s.ratings_exclude.as_str()),
                 is_default: false,
                 poster_position: parse_setting_or_default(&s.poster_position, "poster_position", BadgePosition::parse, BadgePosition::BottomCenter),
                 logo_ratings_limit: s.logo_ratings_limit,

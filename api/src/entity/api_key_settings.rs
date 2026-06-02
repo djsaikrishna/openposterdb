@@ -32,6 +32,7 @@ pub struct Model {
     pub episode_position: String,
     pub episode_badge_direction: String,
     pub episode_blur: bool,
+    pub ratings_exclude: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

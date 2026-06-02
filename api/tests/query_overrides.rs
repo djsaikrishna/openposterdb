@@ -59,13 +59,29 @@ async fn poster_ratings_limit_accepted() {
 }
 
 #[tokio::test]
+async fn poster_ratings_exclude_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?ratings_exclude=rt,trakt"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn poster_all_overrides_accepted() {
     let (app, _) = common::setup_test_app().await;
     let api_key = create_api_key(&app).await;
 
     let req = Request::builder()
         .uri(format!(
-            "/{api_key}/imdb/poster-default/tt0000001.jpg?badge_style=v&label_style=i&badge_size=l&badge_direction=h&position=tl&ratings_limit=5&ratings_order=imdb,tmdb&poster_source=t&fanart_textless=false"
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?badge_style=v&label_style=i&badge_size=l&badge_direction=h&position=tl&ratings_limit=5&ratings_order=imdb,tmdb&ratings_exclude=rt&poster_source=t&fanart_textless=false"
         ))
         .body(Body::empty())
         .unwrap();
@@ -132,6 +148,22 @@ async fn poster_invalid_ratings_order_rejected() {
     let req = Request::builder()
         .uri(format!(
             "/{api_key}/imdb/poster-default/tt0000001.jpg?ratings_order=bogus_source"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn poster_invalid_ratings_exclude_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?ratings_exclude=bogus_source"
         ))
         .body(Body::empty())
         .unwrap();

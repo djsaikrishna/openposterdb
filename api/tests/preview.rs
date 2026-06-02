@@ -97,6 +97,35 @@ async fn preview_respects_ratings_order() {
 }
 
 #[tokio::test]
+async fn preview_respects_ratings_exclude() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    // Same order+limit, but excluding a source must produce a different image
+    // (otherwise the cache key would collide and serve the wrong image).
+    let res1 = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=3&ratings_order=imdb,rt,tmdb", &token)).await.unwrap();
+    assert_eq!(res1.status(), StatusCode::OK);
+    let body1 = res1.into_body().collect().await.unwrap().to_bytes();
+
+    let res2 = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=3&ratings_order=imdb,rt,tmdb&ratings_exclude=rt", &token)).await.unwrap();
+    assert_eq!(res2.status(), StatusCode::OK);
+    let body2 = res2.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(body1[0], 0xFF);
+    assert_eq!(body2[0], 0xFF);
+    assert_ne!(body1, body2, "excluding a source must change the rendered preview");
+}
+
+#[tokio::test]
+async fn preview_rejects_invalid_ratings_exclude() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_exclude=bogus_source", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn preview_with_empty_order_still_works() {
     let (app, _state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;

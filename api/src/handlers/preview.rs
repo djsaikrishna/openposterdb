@@ -104,9 +104,11 @@ fn preview_render_settings(
     badge_direction: BadgeDirection,
     ratings_limit: i32,
     ratings_order: &str,
+    ratings_exclude: &str,
 ) -> RenderSettings {
     let mut s = RenderSettings::default();
     s.ratings_order = std::sync::Arc::from(ratings_order);
+    s.ratings_exclude = std::sync::Arc::from(ratings_exclude);
     match kind {
         cache::ImageType::Poster => {
             s.ratings_limit = ratings_limit;
@@ -168,13 +170,15 @@ pub async fn preview_poster(
     let default_order = db::default_ratings_order();
     let ratings_order = query.ratings_order.as_deref().unwrap_or(&default_order);
     db::validate_ratings_order(ratings_order)?;
+    let ratings_exclude = query.ratings_exclude.as_deref().unwrap_or("");
+    db::validate_ratings_exclude(ratings_exclude)?;
     let position = query.position.unwrap_or(BadgePosition::BottomCenter);
     let raw_badge_style = query.badge_style.unwrap_or(BadgeStyle::Default);
     let label_style = query.label_style.unwrap_or(db::default_label_style());
     let badge_direction = query.badge_direction.unwrap_or(db::default_poster_badge_direction()).resolve(position);
     let badge_style = raw_badge_style.resolve(badge_direction);
-    let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_limit);
-    let preview_settings = preview_render_settings(cache::ImageType::Poster, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order);
+    let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
+    let preview_settings = preview_render_settings(cache::ImageType::Poster, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order, ratings_exclude);
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Poster, image_size, &ratings_suffix);
     let cache_key = format!("preview:{suffix}");
     let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Poster, &suffix, "jpg")?;
@@ -193,7 +197,7 @@ pub async fn preview_poster(
 
     // 3. Render and cache to both layers
     let badges = sample_badges();
-    let badges = ratings::apply_rating_preferences(badges, ratings_order, ratings_limit);
+    let badges = ratings::apply_rating_preferences(badges, ratings_order, ratings_exclude, ratings_limit);
 
     let poster_png: &'static Vec<u8> = &SAMPLE_POSTER_PNG;
     let font = state.font.clone();
@@ -226,10 +230,12 @@ pub async fn preview_logo(
     let default_order = db::default_ratings_order();
     let ratings_order = query.ratings_order.as_deref().unwrap_or(&default_order);
     db::validate_ratings_order(ratings_order)?;
+    let ratings_exclude = query.ratings_exclude.as_deref().unwrap_or("");
+    db::validate_ratings_exclude(ratings_exclude)?;
     let badge_style = query.badge_style.unwrap_or(BadgeStyle::Horizontal).resolve(BadgeDirection::Vertical);
     let label_style = query.label_style.unwrap_or(db::default_label_style());
-    let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_limit);
-    let preview_settings = preview_render_settings(cache::ImageType::Logo, badge_style, label_style, badge_size, BadgePosition::BottomCenter, BadgeDirection::Horizontal, ratings_limit, ratings_order);
+    let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
+    let preview_settings = preview_render_settings(cache::ImageType::Logo, badge_style, label_style, badge_size, BadgePosition::BottomCenter, BadgeDirection::Horizontal, ratings_limit, ratings_order, ratings_exclude);
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Logo, image_size, &ratings_suffix);
     let cache_key = format!("preview-logo:{suffix}");
     let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Logo, &suffix, "png")?;
@@ -245,7 +251,7 @@ pub async fn preview_logo(
     }
 
     let badges = sample_badges();
-    let badges = ratings::apply_rating_preferences(badges, ratings_order, ratings_limit);
+    let badges = ratings::apply_rating_preferences(badges, ratings_order, ratings_exclude, ratings_limit);
 
     let logo_png: &'static Vec<u8> = &SAMPLE_LOGO_PNG;
     let font = state.font.clone();
@@ -278,12 +284,14 @@ pub async fn preview_backdrop(
     let default_order = db::default_ratings_order();
     let ratings_order = query.ratings_order.as_deref().unwrap_or(&default_order);
     db::validate_ratings_order(ratings_order)?;
+    let ratings_exclude = query.ratings_exclude.as_deref().unwrap_or("");
+    db::validate_ratings_exclude(ratings_exclude)?;
     let position = query.position.unwrap_or(db::default_backdrop_position());
     let badge_direction = query.badge_direction.unwrap_or(db::default_backdrop_badge_direction()).resolve(position);
     let badge_style = query.badge_style.unwrap_or(BadgeStyle::Vertical).resolve(badge_direction);
     let label_style = query.label_style.unwrap_or(db::default_label_style());
-    let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_limit);
-    let preview_settings = preview_render_settings(cache::ImageType::Backdrop, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order);
+    let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
+    let preview_settings = preview_render_settings(cache::ImageType::Backdrop, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order, ratings_exclude);
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Backdrop, image_size, &ratings_suffix);
     let cache_key = format!("preview-backdrop:{suffix}");
     let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Backdrop, &suffix, "jpg")?;
@@ -299,7 +307,7 @@ pub async fn preview_backdrop(
     }
 
     let badges = sample_badges();
-    let badges = ratings::apply_rating_preferences(badges, ratings_order, ratings_limit);
+    let badges = ratings::apply_rating_preferences(badges, ratings_order, ratings_exclude, ratings_limit);
 
     let backdrop_png: &'static Vec<u8> = &SAMPLE_BACKDROP_PNG;
     let font = state.font.clone();
@@ -354,13 +362,15 @@ pub async fn preview_episode(
     let default_order = db::default_ratings_order();
     let ratings_order = query.ratings_order.as_deref().unwrap_or(&default_order);
     db::validate_ratings_order(ratings_order)?;
+    let ratings_exclude = query.ratings_exclude.as_deref().unwrap_or("");
+    db::validate_ratings_exclude(ratings_exclude)?;
     let position = query.position.unwrap_or(db::default_episode_position());
     let badge_direction = query.badge_direction.unwrap_or(db::default_episode_badge_direction()).resolve(position);
     let badge_style = query.badge_style.unwrap_or(db::default_episode_badge_style()).resolve(badge_direction);
     let label_style = query.label_style.unwrap_or(db::default_label_style());
     let blur = query.blur.unwrap_or(false);
-    let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_limit);
-    let mut preview_settings = preview_render_settings(cache::ImageType::Episode, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order);
+    let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
+    let mut preview_settings = preview_render_settings(cache::ImageType::Episode, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order, ratings_exclude);
     preview_settings.episode_blur = blur;
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Episode, image_size, &ratings_suffix);
     let cache_key = format!("preview-episode:{suffix}");
@@ -377,7 +387,7 @@ pub async fn preview_episode(
     }
 
     let badges = sample_badges();
-    let badges = ratings::apply_rating_preferences(badges, ratings_order, ratings_limit);
+    let badges = ratings::apply_rating_preferences(badges, ratings_order, ratings_exclude, ratings_limit);
 
     let episode_png: &'static Vec<u8> = &SAMPLE_EPISODE_PNG;
     let font = state.font.clone();

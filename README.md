@@ -124,6 +124,7 @@ GET /{api_key}/isValid
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))
 - `?ratings_limit={0-8}`: maximum number of rating badges to display (0 = no ratings)
 - `?ratings_order={keys}`: comma-separated rating source keys controlling display order. Valid keys: `imdb`, `tmdb`, `rt` (RT Critics), `rta` (RT Audience), `mc` (Metacritic), `trakt`, `lb` (Letterboxd), `mal` (MyAnimeList). Example: `?ratings_order=imdb,tmdb,rt`
+- `?ratings_exclude={keys}`: comma-separated rating source keys to hide entirely (same valid keys as `ratings_order`). Excluded sources are dropped *before* ordering and limiting, so an excluded source frees its badge slot for the next preferred source rather than leaving a gap. Example: `?ratings_exclude=rt` shows your ratings but never RT Critics
 - `?badge_style={h|v|d}`: badge layout — `h` (horizontal), `v` (vertical), `d` (default)
 - `?label_style={t|i|o}`: label rendering — `t` (text), `i` (icon), `o` (official provider logos)
 - `?badge_size={xs|s|m|l|xl}`: badge scale — extra-small, small, medium, large, extra-large

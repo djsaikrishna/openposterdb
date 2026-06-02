@@ -69,3 +69,15 @@ export function parseRatingsOrder(order: string): string[] {
   }
   return keys
 }
+
+/**
+ * Parse the comma-separated `ratings_exclude` string into an array of source
+ * keys. Unlike {@link parseRatingsOrder}, this does NOT append missing sources —
+ * it keeps only the keys the user has explicitly chosen to exclude. Unknown keys
+ * are dropped so a stale value can't poison the form.
+ */
+export function parseRatingsExclude(exclude: string): string[] {
+  if (!exclude) return []
+  const known = new Set<string>(ALL_RATING_SOURCES.map(s => s.key))
+  return exclude.split(',').map(k => k.trim()).filter(k => known.has(k))
+}

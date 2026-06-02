@@ -63,6 +63,7 @@ const sampleSettings = {
   fanart_available: true,
   ratings_limit: 3,
   ratings_order: 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
+  ratings_exclude: '',
   is_default: true,
   poster_position: 'bc',
   logo_ratings_limit: 3,

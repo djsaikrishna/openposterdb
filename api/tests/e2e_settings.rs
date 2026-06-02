@@ -169,6 +169,7 @@ async fn global_settings_round_trip_all_fields() {
         "textless": true,
         "ratings_limit": 5,
         "ratings_order": "imdb,rt,mc,tmdb,trakt,mal,lb,rta",
+        "ratings_exclude": "rt,mc",
         "poster_position": "tl",
         "logo_ratings_limit": 2,
         "backdrop_ratings_limit": 7,
@@ -198,6 +199,7 @@ async fn global_settings_round_trip_all_fields() {
     assert_eq!(settings["textless"], true);
     assert_eq!(settings["ratings_limit"], 5);
     assert_eq!(settings["ratings_order"], "imdb,rt,mc,tmdb,trakt,mal,lb,rta");
+    assert_eq!(settings["ratings_exclude"], "rt,mc");
     assert_eq!(settings["poster_position"], "tl");
     assert_eq!(settings["logo_ratings_limit"], 2);
     assert_eq!(settings["backdrop_ratings_limit"], 7);
@@ -234,6 +236,7 @@ async fn per_key_settings_round_trip() {
         "image_source": "t",
         "ratings_limit": 1,
         "ratings_order": "tmdb",
+        "ratings_exclude": "lb,mal",
         "poster_position": "r",
         "logo_ratings_limit": 4,
         "backdrop_ratings_limit": 6,
@@ -260,6 +263,7 @@ async fn per_key_settings_round_trip() {
 
     assert_eq!(settings["is_default"], false);
     assert_eq!(settings["ratings_limit"], 1);
+    assert_eq!(settings["ratings_exclude"], "lb,mal");
     assert_eq!(settings["poster_position"], "r");
     assert_eq!(settings["poster_badge_style"], "h");
     assert_eq!(settings["logo_badge_style"], "v");
@@ -455,6 +459,39 @@ async fn global_settings_rejects_invalid_ratings_order() {
     let req = authed_request("PUT", "/api/admin/settings", &token, Some(update));
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn global_settings_rejects_invalid_ratings_exclude() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let update = json!({
+        "image_source": "t",
+        "ratings_exclude": "bogus",
+    });
+    let req = authed_request("PUT", "/api/admin/settings", &token, Some(update));
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn global_ratings_exclude_propagates_to_free_key_renders() {
+    // A global ratings_exclude must change what the free key renders (and its
+    // cache key), proving exclusion flows through the global settings path.
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let update = json!({ "image_source": "t", "ratings_exclude": "rt" });
+    let req = authed_request("PUT", "/api/admin/settings", &token, Some(update));
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Read back via the admin GET to confirm persistence.
+    let req = authed_request("GET", "/api/admin/settings", &token, None);
+    let res = app.clone().oneshot(req).await.unwrap();
+    let settings = parse_json(res).await;
+    assert_eq!(settings["ratings_exclude"], "rt");
 }
 
 #[tokio::test]

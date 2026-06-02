@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select'
 import RatingsOrderList from '@/components/RatingsOrderList.vue'
 import type { SaveSettingsPayload } from '@/lib/api'
-import { LANGUAGES, parseRatingsOrder } from '@/lib/constants'
+import { LANGUAGES, ALL_RATING_SOURCES, parseRatingsOrder, parseRatingsExclude } from '@/lib/constants'
 
 export interface RenderSettings {
   image_source: string
@@ -23,6 +23,7 @@ export interface RenderSettings {
   fanart_available: boolean
   ratings_limit: number
   ratings_order: string
+  ratings_exclude: string
   is_default?: boolean
   poster_position: string
   logo_ratings_limit: number
@@ -54,10 +55,10 @@ const props = defineProps<{
   loadSettings: () => Promise<RenderSettings | null>
   saveSettings: (s: SaveSettingsPayload) => Promise<string | null>
   resetSettings?: () => Promise<boolean>
-  fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string) => Promise<Response>
-  fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string) => Promise<Response>
-  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string) => Promise<Response>
-  fetchEpisodePreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean) => Promise<Response>
+  fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string) => Promise<Response>
+  fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, ratingsExclude?: string) => Promise<Response>
+  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, ratingsExclude?: string) => Promise<Response>
+  fetchEpisodePreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean, ratingsExclude?: string) => Promise<Response>
 }>()
 
 const editFanart = ref(props.settings.image_source === 'f')
@@ -66,6 +67,9 @@ const editTextless = ref(props.settings.textless)
 const editSource = computed(() => editFanart.value ? 'f' : 't')
 const editRatingsLimit = ref(props.settings.ratings_limit)
 const editRatingsOrder = ref<string[]>(parseRatingsOrder(props.settings.ratings_order))
+// Excluded sources are stored as only the explicitly-checked keys (unlike order,
+// which is normalised to include every source).
+const editRatingsExclude = ref<string[]>(parseRatingsExclude(props.settings.ratings_exclude))
 const editPosterPosition = ref(props.settings.poster_position || 'bc')
 const editLogoRatingsLimit = ref(props.settings.logo_ratings_limit ?? 3)
 const editBackdropRatingsLimit = ref(props.settings.backdrop_ratings_limit ?? 3)
@@ -95,6 +99,7 @@ function applySettings(s: RenderSettings) {
   editTextless.value = s.textless
   editRatingsLimit.value = s.ratings_limit
   editRatingsOrder.value = parseRatingsOrder(s.ratings_order)
+  editRatingsExclude.value = parseRatingsExclude(s.ratings_exclude)
   editPosterPosition.value = s.poster_position || 'bc'
   editLogoRatingsLimit.value = s.logo_ratings_limit ?? 3
   editBackdropRatingsLimit.value = s.backdrop_ratings_limit ?? 3
@@ -158,6 +163,7 @@ async function autoSave() {
       textless: editTextless.value,
       ratings_limit: editRatingsLimit.value,
       ratings_order: editRatingsOrder.value.join(','),
+      ratings_exclude: editRatingsExclude.value.join(','),
       poster_position: editPosterPosition.value,
       logo_ratings_limit: editLogoRatingsLimit.value,
       backdrop_ratings_limit: editBackdropRatingsLimit.value,
@@ -206,7 +212,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
   () => {
     if (syncing) return
     autoSave()
@@ -265,7 +271,7 @@ function onPreviewLoad(state: PreviewState, e: Event) {
 
 async function fetchPreviewImage(
   state: PreviewState,
-  fetcher: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string) => Promise<Response>,
+  fetcher: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string) => Promise<Response>,
   extraArgs?: { posterPosition?: string; badgeStyle?: string; labelStyle?: string; badgeDirection?: string; badgeSize?: string },
 ) {
   state.loading = true
@@ -273,7 +279,7 @@ async function fetchPreviewImage(
   const generation = ++state.generation
 
   try {
-    const res = await fetcher(editRatingsLimit.value, editRatingsOrder.value.join(','), extraArgs?.posterPosition, extraArgs?.badgeStyle, extraArgs?.labelStyle, extraArgs?.badgeDirection, extraArgs?.badgeSize)
+    const res = await fetcher(editRatingsLimit.value, editRatingsOrder.value.join(','), extraArgs?.posterPosition, extraArgs?.badgeStyle, extraArgs?.labelStyle, extraArgs?.badgeDirection, extraArgs?.badgeSize, editRatingsExclude.value.join(','))
     if (generation !== state.generation) return
     if (!res.ok) {
       state.error = true
@@ -303,19 +309,19 @@ function updatePosterPreview() {
 
 function updateLogoPreview() {
   if (props.fetchLogoPreview) {
-    fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsLimit.value, order, editLogoBadgeStyle.value, editLogoLabelStyle.value, editLogoBadgeSize.value))
+    fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsLimit.value, order, editLogoBadgeStyle.value, editLogoLabelStyle.value, editLogoBadgeSize.value, editRatingsExclude.value.join(',')))
   }
 }
 
 function updateBackdropPreview() {
   if (props.fetchBackdropPreview) {
-    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value))
+    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value, editRatingsExclude.value.join(',')))
   }
 }
 
 function updateEpisodePreview() {
   if (props.fetchEpisodePreview) {
-    fetchPreviewImage(episodePreview.value, (_limit, order) => props.fetchEpisodePreview!(editEpisodeRatingsLimit.value, order, editEpisodeBadgeStyle.value, editEpisodeLabelStyle.value, editEpisodeBadgeSize.value, editEpisodePosition.value, editEpisodeBadgeDirection.value, editEpisodeBlur.value))
+    fetchPreviewImage(episodePreview.value, (_limit, order) => props.fetchEpisodePreview!(editEpisodeRatingsLimit.value, order, editEpisodeBadgeStyle.value, editEpisodeLabelStyle.value, editEpisodeBadgeSize.value, editEpisodePosition.value, editEpisodeBadgeDirection.value, editEpisodeBlur.value, editRatingsExclude.value.join(',')))
   }
 }
 
@@ -326,8 +332,8 @@ function updateAllPreviews() {
   updateEpisodePreview()
 }
 
-// Global settings: refresh all previews
-watch([editRatingsOrder], () => {
+// Global settings: refresh all previews (order and exclude affect every type)
+watch([editRatingsOrder, editRatingsExclude], () => {
   if (syncing) return
   if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
   if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
@@ -382,6 +388,18 @@ onBeforeUnmount(() => {
 })
 
 const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
+
+function isExcluded(key: string): boolean {
+  return editRatingsExclude.value.includes(key)
+}
+
+function toggleExclude(key: string, checked: boolean) {
+  const set = new Set(editRatingsExclude.value)
+  if (checked) set.add(key)
+  else set.delete(key)
+  // Keep canonical source order so the saved value is stable regardless of click order.
+  editRatingsExclude.value = ALL_RATING_SOURCES.map(s => s.key).filter(k => set.has(k))
+}
 </script>
 
 <template>
@@ -437,6 +455,30 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
         <Label>Rating order</Label>
         <p class="text-xs text-muted-foreground">Use the arrows to reorder. Higher items have priority.</p>
         <RatingsOrderList v-model="editRatingsOrder" />
+      </div>
+
+      <div class="space-y-2 pt-1">
+        <Label>Exclude ratings</Label>
+        <p class="text-xs text-muted-foreground">Hide specific rating sources entirely. An excluded source never appears, freeing its slot for the next preferred source.</p>
+        <div class="grid grid-cols-1 gap-x-4 gap-y-1.5 max-w-sm sm:grid-cols-2">
+          <div
+            v-for="source in ALL_RATING_SOURCES"
+            :key="source.key"
+            class="flex items-center gap-2"
+          >
+            <Checkbox
+              :id="inputId(`exclude-${source.key}`)"
+              :model-value="isExcluded(source.key)"
+              :data-testid="`exclude-${source.key}-checkbox`"
+              @update:model-value="(v) => toggleExclude(source.key, !!v)"
+            />
+            <span
+              class="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+              :style="{ backgroundColor: source.color }"
+            ></span>
+            <Label :for="inputId(`exclude-${source.key}`)" class="text-sm font-normal">{{ source.label }}</Label>
+          </div>
+        </div>
       </div>
     </div>
 

@@ -116,6 +116,7 @@ pub struct GlobalSettingsResponse {
     pub fanart_available: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
+    pub ratings_exclude: String,
     pub free_api_key_enabled: bool,
     pub free_api_key_locked: bool,
     pub poster_position: BadgePosition,
@@ -163,6 +164,7 @@ pub async fn get_settings(
         fanart_available: state.fanart.is_some(),
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order.to_string(),
+        ratings_exclude: settings.ratings_exclude.to_string(),
         free_api_key_enabled,
         free_api_key_locked,
         poster_position: settings.poster_position,
@@ -202,6 +204,8 @@ pub struct UpdateGlobalSettingsRequest {
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
+    #[serde(default = "db::default_ratings_exclude")]
+    pub ratings_exclude: String,
     pub free_api_key_enabled: Option<bool>,
     #[serde(default = "db::default_poster_position")]
     pub poster_position: BadgePosition,
@@ -253,7 +257,7 @@ pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateGlobalSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, &req.ratings_exclude, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
     let textless_str = if req.textless { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
     let logo_limit_str = req.logo_ratings_limit.to_string();
@@ -266,6 +270,7 @@ pub async fn update_settings(
         ("textless", textless_str),
         ("ratings_limit", &limit_str),
         ("ratings_order", &req.ratings_order),
+        ("ratings_exclude", &req.ratings_exclude),
         ("poster_position", req.poster_position.as_str()),
         ("logo_ratings_limit", &logo_limit_str),
         ("backdrop_ratings_limit", &backdrop_limit_str),
