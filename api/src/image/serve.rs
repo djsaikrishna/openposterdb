@@ -230,6 +230,14 @@ pub fn settings_hash(settings: &RenderSettings, kind: cache::ImageType, image_si
     hasher.update(settings_cache_suffix(settings, kind, image_size).as_bytes());
     hasher.update(b"\0");
 
+    // `ratings_exclude` independently: the predicted ratings suffix collapses an
+    // excluded source that sits beyond the limit in the all-sources-present
+    // prediction, but such configs still render differently for titles with
+    // partial source availability. Hash a canonical exclude token so two configs
+    // differing only in ratings_exclude never share a CDN URL.
+    hasher.update(ratings::exclude_cache_token(&settings.ratings_exclude).as_bytes());
+    hasher.update(b"\0");
+
     // Source-selection settings (not in cache suffix because handled by code path/variant)
     hasher.update(settings.image_source.as_str().as_bytes());
     hasher.update(b"\0");
@@ -2111,6 +2119,46 @@ mod tests {
         let mut s2 = RenderSettings::default();
         s2.ratings_limit = 5;
         assert_ne!(
+            settings_hash(&s1, cache::ImageType::Poster, None),
+            settings_hash(&s2, cache::ImageType::Poster, None)
+        );
+    }
+
+    #[test]
+    fn settings_hash_differs_by_ratings_exclude() {
+        let s1 = RenderSettings::default();
+        let mut s2 = RenderSettings::default();
+        s2.ratings_exclude = std::sync::Arc::from("rt");
+        assert_ne!(
+            settings_hash(&s1, cache::ImageType::Poster, None),
+            settings_hash(&s2, cache::ImageType::Poster, None)
+        );
+    }
+
+    #[test]
+    fn settings_hash_differs_by_ratings_exclude_beyond_limit() {
+        // Regression: `trakt` is beyond the default limit (3) in the all-sources
+        // present prediction, so `ratings_cache_suffix` collapses it — but the
+        // CDN hash must still differ, or partial-availability titles collide.
+        let mut s1 = RenderSettings::default();
+        s1.ratings_limit = 3;
+        let mut s2 = s1.clone();
+        s2.ratings_exclude = std::sync::Arc::from("trakt");
+        assert_ne!(
+            settings_hash(&s1, cache::ImageType::Poster, None),
+            settings_hash(&s2, cache::ImageType::Poster, None),
+            "configs differing only in ratings_exclude must not share a CDN hash"
+        );
+    }
+
+    #[test]
+    fn settings_hash_same_for_reordered_ratings_exclude() {
+        // Canonical token means semantically-equal excludes dedupe (no false miss).
+        let mut s1 = RenderSettings::default();
+        let mut s2 = RenderSettings::default();
+        s1.ratings_exclude = std::sync::Arc::from("rt,tmdb");
+        s2.ratings_exclude = std::sync::Arc::from("tmdb,rt");
+        assert_eq!(
             settings_hash(&s1, cache::ImageType::Poster, None),
             settings_hash(&s2, cache::ImageType::Poster, None)
         );

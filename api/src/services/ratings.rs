@@ -433,6 +433,25 @@ pub fn available_sources_string(badges: &[RatingBadge]) -> String {
     sources.iter().map(|s| s.cache_char()).collect()
 }
 
+/// Canonical, order-independent cache token for an exclude set (e.g. `"k"` for
+/// `"trakt"`, `"rt"` for both `"rt,tmdb"` and `"tmdb,rt"`).
+///
+/// `ratings_cache_suffix` can collapse two different exclude sets to the same
+/// predicted suffix when an excluded source falls *beyond* the rating limit in
+/// the canonical-padded prediction. The CDN `settings_hash` must still tell
+/// those configs apart — they render differently for titles with partial source
+/// availability — so it hashes this token alongside the predicted suffix.
+/// Canonicalising (sort + dedup) keeps semantically-equal excludes hashing the
+/// same, so it introduces no false cache misses.
+pub fn exclude_cache_token(exclude: &str) -> String {
+    let mut sources = parse_order(exclude);
+    sources.sort_by_key(|s| {
+        CANONICAL_ORDER.iter().position(|&k| RatingSource::from_key(k) == Some(*s)).unwrap_or(usize::MAX)
+    });
+    sources.dedup();
+    sources.iter().map(|s| s.cache_char()).collect()
+}
+
 /// Canonical order of all rating sources, used for deterministic cache keys.
 const CANONICAL_ORDER: &[&str] = &["mal", "imdb", "lb", "rt", "rta", "mc", "tmdb", "trakt"];
 
@@ -735,6 +754,19 @@ mod tests {
         let expected = badges_cache_suffix(&filtered);
         let from_available = badges_suffix_from_available(&available, "imdb,rt,tmdb", "rt", 3);
         assert_eq!(from_available, expected);
+    }
+
+    #[test]
+    fn exclude_cache_token_canonical_and_order_independent() {
+        assert_eq!(exclude_cache_token(""), "");
+        assert_eq!(exclude_cache_token("trakt"), "k");
+        // Order-independent + deduped to canonical source order (rt before tmdb).
+        assert_eq!(exclude_cache_token("rt,tmdb"), exclude_cache_token("tmdb,rt"));
+        assert_eq!(exclude_cache_token("tmdb,rt"), "rt");
+        // Different exclude sets yield different tokens.
+        assert_ne!(exclude_cache_token("rt"), exclude_cache_token("trakt"));
+        // Unknown keys are ignored.
+        assert_eq!(exclude_cache_token("bogus"), "");
     }
 
     #[test]
