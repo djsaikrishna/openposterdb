@@ -66,6 +66,7 @@ async function toggleFreeApiKey() {
     logo_label_style: s.logo_label_style,
     backdrop_label_style: s.backdrop_label_style,
     poster_badge_direction: s.poster_badge_direction,
+    poster_badge_split: s.poster_badge_split,
     poster_badge_size: s.poster_badge_size,
     logo_badge_size: s.logo_badge_size,
     backdrop_badge_size: s.backdrop_badge_size,

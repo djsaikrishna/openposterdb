@@ -75,6 +75,7 @@ const sampleSettings = {
   logo_label_style: 't',
   backdrop_label_style: 't',
   poster_badge_direction: 'd',
+  poster_badge_split: false,
 }
 
 describe('KeySettingsView', () => {
