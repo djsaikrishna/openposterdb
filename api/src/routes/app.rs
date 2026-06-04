@@ -130,6 +130,7 @@ pub fn build_app(state: Arc<AppState>) -> Router {
 
     let compressed_routes = Router::new()
         .merge(super::auth::auth_routes())
+        .merge(super::image::free_key_settings_route())
         .merge(admin_routes)
         .merge(key_self_routes)
         .merge(openapi_route)

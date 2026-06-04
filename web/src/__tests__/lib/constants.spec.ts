@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { ALL_RATING_SOURCES, DEFAULT_RATINGS_ORDER, parseRatingsOrder, parseRatingsExclude } from '@/lib/constants'
+import {
+  ALL_RATING_SOURCES,
+  DEFAULT_RATINGS_ORDER,
+  parseRatingsOrder,
+  parseRatingsExclude,
+  BADGE_STYLE_LABELS,
+  BADGE_DIRECTION_LABELS,
+  LABEL_STYLE_LABELS,
+  BADGE_SIZE_LABELS,
+  IMAGE_SOURCE_LABELS,
+  POSITION_LABELS,
+} from '@/lib/constants'
 
 describe('ALL_RATING_SOURCES', () => {
   it('has 10 rating sources', () => {
@@ -82,5 +93,34 @@ describe('parseRatingsExclude', () => {
 
   it('drops unknown keys', () => {
     expect(parseRatingsExclude('rt,bogus,mal')).toEqual(['rt', 'mal'])
+  })
+})
+
+describe('enum code → label maps', () => {
+  it('badge style/direction map the h/v/d codes', () => {
+    for (const map of [BADGE_STYLE_LABELS, BADGE_DIRECTION_LABELS]) {
+      expect(map.h).toBe('Horizontal')
+      expect(map.v).toBe('Vertical')
+      expect(map.d).toBe('Auto')
+    }
+  })
+
+  it('label style maps the t/i/o codes', () => {
+    expect(LABEL_STYLE_LABELS).toEqual({ t: 'Text', i: 'Icon', o: 'Official' })
+  })
+
+  it('badge size maps every xs–xl code', () => {
+    expect(Object.keys(BADGE_SIZE_LABELS).sort()).toEqual(['l', 'm', 's', 'xl', 'xs'])
+    expect(BADGE_SIZE_LABELS.m).toBe('Medium')
+  })
+
+  it('image source maps the t/f codes', () => {
+    expect(IMAGE_SOURCE_LABELS).toEqual({ t: 'TMDB', f: 'Fanart.tv' })
+  })
+
+  it('position maps all eight placement codes', () => {
+    expect(Object.keys(POSITION_LABELS)).toHaveLength(8)
+    expect(POSITION_LABELS.bc).toBe('Bottom Center')
+    expect(POSITION_LABELS.tr).toBe('Top Right')
   })
 })

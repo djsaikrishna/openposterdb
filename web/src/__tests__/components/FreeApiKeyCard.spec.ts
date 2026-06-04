@@ -2,12 +2,50 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import FreeApiKeyCard from '@/components/FreeApiKeyCard.vue'
+import RatingsOrderList from '@/components/RatingsOrderList.vue'
 import { useAuthStore } from '@/stores/auth'
+import { DEFAULT_RATINGS_ORDER } from '@/lib/constants'
+import type { FreeKeyDefaults } from '@/lib/auth-api'
 
 vi.mock('@/stores/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/stores/auth')>()
   return actual
 })
+
+/** A full FreeKeyDefaults fixture; override individual fields per test. */
+function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults {
+  return {
+    image_source: 't',
+    lang: 'en',
+    textless: false,
+    ratings_limit: 3,
+    ratings_order: DEFAULT_RATINGS_ORDER,
+    ratings_exclude: '',
+    poster_position: 'bc',
+    logo_ratings_limit: 5,
+    backdrop_ratings_limit: 5,
+    poster_badge_style: 'v',
+    logo_badge_style: 'v',
+    backdrop_badge_style: 'v',
+    poster_label_style: 'o',
+    logo_label_style: 'o',
+    backdrop_label_style: 'o',
+    poster_badge_direction: 'd',
+    poster_badge_size: 'm',
+    logo_badge_size: 'm',
+    backdrop_badge_size: 'm',
+    backdrop_position: 'bc',
+    backdrop_badge_direction: 'd',
+    episode_ratings_limit: 3,
+    episode_badge_style: 'v',
+    episode_label_style: 'o',
+    episode_badge_size: 'm',
+    episode_position: 'bc',
+    episode_badge_direction: 'd',
+    episode_blur: false,
+    ...overrides,
+  }
+}
 
 const SelectStub = {
   name: 'Select',
@@ -16,11 +54,14 @@ const SelectStub = {
   emits: ['update:modelValue'],
 }
 
-function mountCard(freeApiKeyEnabled = true) {
+function mountCard(freeApiKeyEnabled = true, defaults: FreeKeyDefaults | null = makeDefaults()) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const auth = useAuthStore()
   auth.freeApiKeyEnabled = freeApiKeyEnabled
+  // Pre-seed so the card's onMounted load short-circuits (no network in tests).
+  // Pass `null` to exercise the fetch/fallback paths explicitly.
+  if (defaults) auth.freeKeyDefaults = defaults
 
   return mount(FreeApiKeyCard, {
     global: {
@@ -43,6 +84,13 @@ function mountCard(freeApiKeyEnabled = true) {
           template: '<button :disabled="disabled" :type="type" @click="$emit(\'click\')"><slot /></button>',
           props: ['disabled', 'variant', 'size', 'type'],
         },
+        Checkbox: {
+          name: 'Checkbox',
+          template: '<button type="button" role="checkbox" :id="id" :aria-checked="modelValue ? \'true\' : \'false\'" @click="$emit(\'update:modelValue\', !modelValue)" />',
+          props: ['modelValue', 'id', 'ariaLabel'],
+          emits: ['update:modelValue'],
+        },
+        Label: { template: '<label><slot /></label>', props: ['for'] },
         ChevronRight: { template: '<svg />' },
         Loader2: { template: '<svg />' },
       },
@@ -82,6 +130,7 @@ describe('FreeApiKeyCard', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('renders nothing when freeApiKeyEnabled is false', () => {
@@ -334,5 +383,118 @@ describe('FreeApiKeyCard', () => {
     await setSelectById(wrapper, 'free-image-type', 'episode')
 
     expect(wrapper.find('#free-textless').exists()).toBe(false)
+  })
+
+  // --- Reflecting the server's global defaults ---
+
+  /** Rating-priority row labels, in display order. */
+  function orderLabels(wrapper: VueWrapper) {
+    return wrapper.findComponent(RatingsOrderList).findAll('span.flex-1')
+  }
+
+  it('seeds the rating priority list from the server order', () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_order: 'tmdb,imdb,rt' }))
+    const labels = orderLabels(wrapper)
+    expect(labels[0].text()).toBe('TMDB')
+    expect(labels[1].text()).toBe('IMDb')
+  })
+
+  it('annotates dropdown defaults with the server values', () => {
+    const wrapper = mountCard(true, makeDefaults({
+      poster_badge_style: 'v',
+      poster_label_style: 't',
+      poster_badge_size: 'l',
+      ratings_limit: 5,
+      image_source: 'f',
+      lang: 'de',
+    }))
+    const text = wrapper.text()
+    expect(text).toContain('Badge style: default (Vertical)')
+    expect(text).toContain('Label style: default (Text)')
+    expect(text).toContain('Badge size: default (Large)')
+    expect(text).toContain('Max badges: default (5)')
+    expect(text).toContain('Source: default (Fanart.tv)')
+    expect(text).toContain('Language: any (de)')
+  })
+
+  it('reflects per-image-type defaults when switching image type', async () => {
+    const wrapper = mountCard(true, makeDefaults({ poster_badge_style: 'v', logo_badge_style: 'h' }))
+    expect(wrapper.text()).toContain('Badge style: default (Vertical)')
+
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(wrapper.text()).toContain('Badge style: default (Horizontal)')
+  })
+
+  it('dims excluded sources in the priority list and pre-checks them', () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_exclude: 'rt' }))
+    const rtLabel = orderLabels(wrapper).find(s => s.text() === 'Rotten Tomatoes (Critics)')
+    expect(rtLabel?.classes()).toContain('line-through')
+    // The exclude checkbox for rt is pre-checked from the server baseline.
+    expect(wrapper.find('#free-exclude-rt').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('#free-exclude-imdb').attributes('aria-checked')).toBe('false')
+  })
+
+  it('does not send ratings_exclude when the selection matches the server baseline', () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_exclude: 'rt' }))
+    expect(findCurlCode(wrapper).text()).not.toContain('ratings_exclude=')
+  })
+
+  it('excluding a source adds it to the curl and dims it in the list', async () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_exclude: '' }))
+    await wrapper.find('#free-exclude-rt').trigger('click')
+    await flushPromises()
+
+    expect(findCurlCode(wrapper).text()).toContain('ratings_exclude=rt')
+    const rtLabel = orderLabels(wrapper).find(s => s.text() === 'Rotten Tomatoes (Critics)')
+    expect(rtLabel?.classes()).toContain('line-through')
+  })
+
+  it('unchecking a server exclusion emits an empty ratings_exclude override', async () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_exclude: 'rt' }))
+    await wrapper.find('#free-exclude-rt').trigger('click')
+    await flushPromises()
+
+    // Empty value (trailing `=`) is required to override the server's exclusion.
+    expect(findCurlCode(wrapper).text()).toContain('ratings_exclude=')
+    expect(findCurlCode(wrapper).text()).not.toContain('ratings_exclude=rt')
+  })
+
+  it('does not send ratings_order when the list matches the server order', () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_order: 'tmdb,imdb,rt' }))
+    expect(findCurlCode(wrapper).text()).not.toContain('ratings_order=')
+  })
+
+  it('sends ratings_order once the user reorders away from the server order', async () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_order: 'tmdb,imdb,rt' }))
+    // Move the second item (imdb) above tmdb — diverges from the server baseline.
+    const upButtons = wrapper.findAll('button[title="Move up"]')
+    await upButtons[1].trigger('click')
+    await flushPromises()
+    expect(findCurlCode(wrapper).text()).toContain('ratings_order=imdb%2Ctmdb')
+  })
+
+  it('falls back to built-in defaults when server settings are unavailable', () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    const wrapper = mountCard(true, null)
+    const text = wrapper.text()
+    expect(text).toContain('Badge style: default')
+    expect(text).not.toContain('Badge style: default (')
+    expect(findCurlCode(wrapper).text()).not.toContain('ratings_order=')
+  })
+
+  it('loads and reflects server defaults via the API on mount', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeDefaults({ poster_badge_style: 'h', lang: 'fr' })),
+      }),
+    )
+    const wrapper = mountCard(true, null)
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('Badge style: default (Horizontal)')
+    expect(text).toContain('Language: any (fr)')
   })
 })

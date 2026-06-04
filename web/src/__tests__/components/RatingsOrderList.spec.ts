@@ -13,6 +13,12 @@ function mountWithModel(initial: string[] = ['imdb', 'tmdb', 'rt'], compact = fa
   return wrapper
 }
 
+function mountWithExcluded(initial: string[], excluded: string[]) {
+  return mount(RatingsOrderList, {
+    props: { modelValue: initial, excluded },
+  })
+}
+
 describe('RatingsOrderList', () => {
   it('renders all items in correct order', () => {
     const order = ['imdb', 'tmdb', 'rt']
@@ -133,6 +139,39 @@ describe('RatingsOrderList', () => {
     const wrapper = mountWithModel(['imdb', 'tmdb'], false)
     const container = wrapper.find('.space-y-1')
     expect(container.exists()).toBe(true)
+  })
+
+  describe('excluded prop', () => {
+    it('dims and strikes through excluded sources only', () => {
+      const wrapper = mountWithExcluded(['imdb', 'tmdb', 'rt'], ['tmdb'])
+      const rows = wrapper.findAll('.flex.items-center')
+      expect(rows[1].classes()).toContain('opacity-40')
+      expect(rows[0].classes()).not.toContain('opacity-40')
+
+      const labels = wrapper.findAll('span.flex-1')
+      expect(labels[1].classes()).toContain('line-through')
+      expect(labels[1].attributes('title')).toBeTruthy()
+      expect(labels[0].classes()).not.toContain('line-through')
+      expect(labels[0].attributes('title')).toBeUndefined()
+    })
+
+    it('applies no exclusion styling when excluded is omitted', () => {
+      const wrapper = mountWithModel(['imdb', 'tmdb'])
+      for (const row of wrapper.findAll('.flex.items-center')) {
+        expect(row.classes()).not.toContain('opacity-40')
+      }
+      for (const label of wrapper.findAll('span.flex-1')) {
+        expect(label.classes()).not.toContain('line-through')
+      }
+    })
+
+    it('keeps excluded items functional — move buttons still reorder them', async () => {
+      const wrapper = mountWithExcluded(['imdb', 'tmdb', 'rt'], ['tmdb'])
+      const buttons = wrapper.findAll('button')
+      // Move tmdb (excluded, second row) up — up button is index 2.
+      await buttons[2].trigger('click')
+      expect(wrapper.emitted('update:modelValue')![0][0]).toEqual(['tmdb', 'imdb', 'rt'])
+    })
   })
 
   it('handles all 10 rating sources', () => {

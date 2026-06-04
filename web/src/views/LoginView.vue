@@ -65,7 +65,7 @@ function toggleMode() {
 </script>
 
 <template>
-  <main v-if="!checking" class="min-h-screen flex items-center justify-center">
+  <main v-if="!checking" class="min-h-screen flex flex-col items-center justify-center gap-6 px-4 py-8">
     <div class="w-full max-w-sm space-y-6">
       <div class="text-center">
         <h1 class="text-2xl font-bold">OpenPosterDB</h1>
@@ -126,6 +126,11 @@ function toggleMode() {
         <router-link to="/" class="underline hover:text-foreground">&larr; Back to home</router-link>
       </p>
 
+    </div>
+
+    <!-- The free-key card sits outside the narrow form column so it can use the
+         same (wider) width as the homepage without stretching the login form. -->
+    <div v-if="auth.freeApiKeyEnabled" class="w-full max-w-xl">
       <FreeApiKeyCard />
     </div>
   </main>

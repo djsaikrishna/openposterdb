@@ -2,7 +2,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::cache;
@@ -140,6 +140,91 @@ async fn resolve_free_settings(
             tracing::warn!(error = %e, "failed to load global settings, using defaults");
             Arc::new(db::RenderSettings::default())
         }))
+}
+
+/// Public, read-only view of the global default render settings the free API
+/// key serves with. Mirrors the per-type fields the "Try it out" UI needs so it
+/// can show the operator's actual configuration instead of hardcoded frontend
+/// defaults. This is a strict subset of the admin `GlobalSettingsResponse` —
+/// it deliberately omits operational flags (`fanart_available`,
+/// `free_api_key_locked`) so the public endpoint can't leak them.
+#[derive(Serialize)]
+pub struct FreeKeySettingsResponse {
+    pub image_source: ImageSource,
+    pub lang: String,
+    pub textless: bool,
+    pub ratings_limit: i32,
+    pub ratings_order: String,
+    pub ratings_exclude: String,
+    pub poster_position: BadgePosition,
+    pub logo_ratings_limit: i32,
+    pub backdrop_ratings_limit: i32,
+    pub poster_badge_style: BadgeStyle,
+    pub logo_badge_style: BadgeStyle,
+    pub backdrop_badge_style: BadgeStyle,
+    pub poster_label_style: LabelStyle,
+    pub logo_label_style: LabelStyle,
+    pub backdrop_label_style: LabelStyle,
+    pub poster_badge_direction: BadgeDirection,
+    pub poster_badge_size: BadgeSize,
+    pub logo_badge_size: BadgeSize,
+    pub backdrop_badge_size: BadgeSize,
+    pub backdrop_position: BadgePosition,
+    pub backdrop_badge_direction: BadgeDirection,
+    pub episode_ratings_limit: i32,
+    pub episode_badge_style: BadgeStyle,
+    pub episode_label_style: LabelStyle,
+    pub episode_badge_size: BadgeSize,
+    pub episode_position: BadgePosition,
+    pub episode_badge_direction: BadgeDirection,
+    pub episode_blur: bool,
+}
+
+impl From<&RenderSettings> for FreeKeySettingsResponse {
+    fn from(s: &RenderSettings) -> Self {
+        Self {
+            image_source: s.image_source,
+            lang: s.lang.to_string(),
+            textless: s.textless,
+            ratings_limit: s.ratings_limit,
+            ratings_order: s.ratings_order.to_string(),
+            ratings_exclude: s.ratings_exclude.to_string(),
+            poster_position: s.poster_position,
+            logo_ratings_limit: s.logo_ratings_limit,
+            backdrop_ratings_limit: s.backdrop_ratings_limit,
+            poster_badge_style: s.poster_badge_style,
+            logo_badge_style: s.logo_badge_style,
+            backdrop_badge_style: s.backdrop_badge_style,
+            poster_label_style: s.poster_label_style,
+            logo_label_style: s.logo_label_style,
+            backdrop_label_style: s.backdrop_label_style,
+            poster_badge_direction: s.poster_badge_direction,
+            poster_badge_size: s.poster_badge_size,
+            logo_badge_size: s.logo_badge_size,
+            backdrop_badge_size: s.backdrop_badge_size,
+            backdrop_position: s.backdrop_position,
+            backdrop_badge_direction: s.backdrop_badge_direction,
+            episode_ratings_limit: s.episode_ratings_limit,
+            episode_badge_style: s.episode_badge_style,
+            episode_label_style: s.episode_label_style,
+            episode_badge_size: s.episode_badge_size,
+            episode_position: s.episode_position,
+            episode_badge_direction: s.episode_badge_direction,
+            episode_blur: s.episode_blur,
+        }
+    }
+}
+
+/// `GET /api/free-key/settings` — the global default render settings the free
+/// API key serves with, so the public "Try it out" UI reflects what the server
+/// actually produces. Returns 401 when the free key is disabled (same gating as
+/// the free-key image routes). Reads from `global_settings_cache`, so it never
+/// touches the database on the hot path.
+pub async fn free_key_settings(State(state): State<Arc<AppState>>) -> Response {
+    match resolve_free_settings(&state).await {
+        Ok(settings) => axum::Json(FreeKeySettingsResponse::from(&*settings)).into_response(),
+        Err(resp) => resp,
+    }
 }
 
 /// Validate an API key and return settings. Handles both free and per-key paths.

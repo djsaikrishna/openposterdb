@@ -111,6 +111,16 @@ pub fn image_routes() -> Router<Arc<AppState>> {
     router
 }
 
+/// Public, unauthenticated route exposing the global default render settings the
+/// free API key serves with. No rate limiter (a cheap cached read, like
+/// `/api/auth/status`); the handler itself returns 401 when the free key is off.
+pub fn free_key_settings_route() -> Router<Arc<AppState>> {
+    Router::new().route(
+        "/api/free-key/settings",
+        axum::routing::get(image::free_key_settings),
+    )
+}
+
 /// isValid route with lighter rate limiting.
 pub fn is_valid_route() -> Router<Arc<AppState>> {
     let router = Router::new().route(

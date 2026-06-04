@@ -1,9 +1,24 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { FREE_API_KEY, LANGUAGES, DEFAULT_RATINGS_ORDER, parseRatingsOrder } from '@/lib/constants'
+import {
+  FREE_API_KEY,
+  LANGUAGES,
+  ALL_RATING_SOURCES,
+  DEFAULT_RATINGS_ORDER,
+  parseRatingsOrder,
+  parseRatingsExclude,
+  BADGE_STYLE_LABELS,
+  BADGE_DIRECTION_LABELS,
+  LABEL_STYLE_LABELS,
+  BADGE_SIZE_LABELS,
+  IMAGE_SOURCE_LABELS,
+  POSITION_LABELS,
+} from '@/lib/constants'
 import RatingsOrderList from '@/components/RatingsOrderList.vue'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -19,6 +34,16 @@ const isOpen = ref(false)
 
 const auth = useAuthStore()
 
+// Server's global default render settings, so the form reflects what the free
+// key actually produces rather than hardcoded frontend defaults. Loaded lazily
+// (and cached) by the store; `defaults` stays null until it resolves, in which
+// case every control gracefully falls back to its built-in default.
+const defaults = computed(() => auth.freeKeyDefaults)
+
+onMounted(() => {
+  if (auth.freeApiKeyEnabled) auth.loadFreeKeyDefaults()
+})
+
 const idType = ref<'imdb' | 'tmdb' | 'tvdb'>('imdb')
 const imageType = ref<'poster' | 'logo' | 'backdrop' | 'episode'>('poster')
 const idValue = ref('tt0013442')
@@ -33,8 +58,13 @@ const imagePosition = ref('default')
 const imageSource = ref('default')
 const textless = ref('default')
 const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
+// Baseline the user's order is compared against to decide whether to send a
+// `ratings_order` override — the server's order once loaded, else the frontend default.
+const baselineOrder = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 const blur = ref('default')
-const ratingsOrderChanged = ref(false)
+const ratingsOrderChanged = computed(
+  () => ratingsOrderList.value.join(',') !== baselineOrder.value.join(','),
+)
 const fetchError = ref('')
 const fetchLoading = ref(false)
 const resultUrl = ref('')
@@ -57,10 +87,82 @@ const sizeOptions = computed(() => {
   ]
 })
 
-watch(ratingsOrderList, (newOrder) => {
-  const defaultOrder = parseRatingsOrder(DEFAULT_RATINGS_ORDER)
-  ratingsOrderChanged.value = newOrder.join(',') !== defaultOrder.join(',')
-}, { deep: true })
+// Rating sources to exclude from badges. Seeded from the server's exclusion list
+// and editable via the checkboxes below; excluded sources are dimmed in the
+// priority list. Sent as a `ratings_exclude` override only when changed.
+const ratingsExcludeList = ref<string[]>([])
+const excludeBaseline = ref<string[]>([])
+const ratingsExcludeChanged = computed(
+  () => ratingsExcludeList.value.join(',') !== excludeBaseline.value.join(','),
+)
+
+function isExcluded(key: string): boolean {
+  return ratingsExcludeList.value.includes(key)
+}
+function toggleExclude(key: string, checked: boolean) {
+  const set = new Set(ratingsExcludeList.value)
+  if (checked) set.add(key)
+  else set.delete(key)
+  // Keep canonical source order so the emitted value is stable regardless of click order.
+  ratingsExcludeList.value = ALL_RATING_SOURCES.map(s => s.key).filter(k => set.has(k))
+}
+
+// When the server defaults arrive, adopt the server's rating order and exclusion
+// list as the new baselines. Only overwrite a list if the user hasn't edited it
+// yet, so a slow fetch never clobbers an in-progress edit.
+watch(defaults, (d) => {
+  if (!d) return
+  const serverOrder = parseRatingsOrder(d.ratings_order)
+  if (!ratingsOrderChanged.value) ratingsOrderList.value = [...serverOrder]
+  baselineOrder.value = serverOrder
+
+  const serverExclude = parseRatingsExclude(d.ratings_exclude)
+  if (!ratingsExcludeChanged.value) ratingsExcludeList.value = [...serverExclude]
+  excludeBaseline.value = serverExclude
+}, { immediate: true })
+
+// --- Per-image-type server defaults reflected in the dropdown "default" labels ---
+
+const typeDefaults = computed(() => {
+  const d = defaults.value
+  if (!d) return null
+  switch (imageType.value) {
+    case 'logo':
+      return { badge_style: d.logo_badge_style, label_style: d.logo_label_style, badge_size: d.logo_badge_size, ratings_limit: d.logo_ratings_limit, position: null as string | null, badge_direction: null as string | null }
+    case 'backdrop':
+      return { badge_style: d.backdrop_badge_style, label_style: d.backdrop_label_style, badge_size: d.backdrop_badge_size, ratings_limit: d.backdrop_ratings_limit, position: d.backdrop_position, badge_direction: d.backdrop_badge_direction }
+    case 'episode':
+      return { badge_style: d.episode_badge_style, label_style: d.episode_label_style, badge_size: d.episode_badge_size, ratings_limit: d.episode_ratings_limit, position: d.episode_position, badge_direction: d.episode_badge_direction }
+    default: // poster
+      return { badge_style: d.poster_badge_style, label_style: d.poster_label_style, badge_size: d.poster_badge_size, ratings_limit: d.ratings_limit, position: d.poster_position, badge_direction: d.poster_badge_direction }
+  }
+})
+
+/** Build a "<base>: default (<resolved>)" label, or plain "<base>: default" until loaded. */
+function annotate(base: string, value: string | null | undefined, map: Record<string, string>): string {
+  if (value == null) return `${base}: default`
+  return `${base}: default (${map[value] ?? value})`
+}
+
+const langDefaultLabel = computed(() =>
+  defaults.value ? `Language: any (${defaults.value.lang})` : 'Language: any',
+)
+const ratingsLimitDefaultLabel = computed(() => {
+  const limit = typeDefaults.value?.ratings_limit
+  return limit == null ? 'Max badges: default' : `Max badges: default (${limit})`
+})
+const badgeStyleDefaultLabel = computed(() => annotate('Badge style', typeDefaults.value?.badge_style, BADGE_STYLE_LABELS))
+const labelStyleDefaultLabel = computed(() => annotate('Label style', typeDefaults.value?.label_style, LABEL_STYLE_LABELS))
+const badgeSizeDefaultLabel = computed(() => annotate('Badge size', typeDefaults.value?.badge_size, BADGE_SIZE_LABELS))
+const imageSourceDefaultLabel = computed(() => annotate('Source', defaults.value?.image_source, IMAGE_SOURCE_LABELS))
+const positionDefaultLabel = computed(() => annotate('Position', typeDefaults.value?.position, POSITION_LABELS))
+const badgeDirectionDefaultLabel = computed(() => annotate('Direction', typeDefaults.value?.badge_direction, BADGE_DIRECTION_LABELS))
+const textlessDefaultLabel = computed(() =>
+  defaults.value ? `Textless: default (${defaults.value.textless ? 'Yes' : 'No'})` : 'Textless: default',
+)
+const blurDefaultLabel = computed(() =>
+  defaults.value ? `Blur: default (${defaults.value.episode_blur ? 'Yes' : 'No'})` : 'Blur: default',
+)
 
 // Reset size when switching image type if the current size is invalid,
 // and reset poster-only controls when switching away from poster
@@ -103,6 +205,8 @@ const queryString = computed(() => {
   const sizeVal = imageSize.value === 'default' ? '' : imageSize.value
   if (sizeVal) params.set('imageSize', sizeVal)
   if (ratingsOrderChanged.value) params.set('ratings_order', ratingsOrderList.value.join(','))
+  // Emit even when empty, so unchecking the server's exclusions clears them.
+  if (ratingsExcludeChanged.value) params.set('ratings_exclude', ratingsExcludeList.value.join(','))
   if (badgeStyle.value !== 'default') params.set('badge_style', badgeStyle.value)
   if (labelStyle.value !== 'default') params.set('label_style', labelStyle.value)
   if (badgeSize.value !== 'default') params.set('badge_size', badgeSize.value)
@@ -189,7 +293,7 @@ async function handleFetch() {
               <SelectValue placeholder="Language: any" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="any">Language: any</SelectItem>
+              <SelectItem value="any">{{ langDefaultLabel }}</SelectItem>
               <SelectItem v-for="l in LANGUAGES" :key="l.code" :value="l.code">
                 {{ l.code }} - {{ l.name }}
               </SelectItem>
@@ -200,7 +304,7 @@ async function handleFetch() {
               <SelectValue placeholder="Max badges: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Max badges: default</SelectItem>
+              <SelectItem value="default">{{ ratingsLimitDefaultLabel }}</SelectItem>
               <SelectItem v-for="n in 9" :key="n - 1" :value="String(n - 1)">
                 {{ n - 1 }} {{ n - 1 === 1 ? 'badge' : 'badges' }}
               </SelectItem>
@@ -211,7 +315,7 @@ async function handleFetch() {
               <SelectValue placeholder="Badge style: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Badge style: default</SelectItem>
+              <SelectItem value="default">{{ badgeStyleDefaultLabel }}</SelectItem>
               <SelectItem value="h">Horizontal</SelectItem>
               <SelectItem value="v">Vertical</SelectItem>
             </SelectContent>
@@ -221,7 +325,7 @@ async function handleFetch() {
               <SelectValue placeholder="Label style: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Label style: default</SelectItem>
+              <SelectItem value="default">{{ labelStyleDefaultLabel }}</SelectItem>
               <SelectItem value="t">Text</SelectItem>
               <SelectItem value="i">Icon</SelectItem>
               <SelectItem value="o">Official</SelectItem>
@@ -232,7 +336,7 @@ async function handleFetch() {
               <SelectValue placeholder="Badge size: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Badge size: default</SelectItem>
+              <SelectItem value="default">{{ badgeSizeDefaultLabel }}</SelectItem>
               <SelectItem value="xs">Extra Small</SelectItem>
               <SelectItem value="s">Small</SelectItem>
               <SelectItem value="m">Medium</SelectItem>
@@ -245,7 +349,7 @@ async function handleFetch() {
               <SelectValue placeholder="Source: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Source: default</SelectItem>
+              <SelectItem value="default">{{ imageSourceDefaultLabel }}</SelectItem>
               <SelectItem value="t">TMDB</SelectItem>
               <SelectItem value="f">Fanart.tv</SelectItem>
             </SelectContent>
@@ -256,7 +360,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Textless: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">Textless: default</SelectItem>
+                <SelectItem value="default">{{ textlessDefaultLabel }}</SelectItem>
                 <SelectItem value="true">Yes</SelectItem>
                 <SelectItem value="false">No</SelectItem>
               </SelectContent>
@@ -268,7 +372,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Position: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">Position: default</SelectItem>
+                <SelectItem value="default">{{ positionDefaultLabel }}</SelectItem>
                 <SelectItem value="bc">Bottom Center</SelectItem>
                 <SelectItem value="tc">Top Center</SelectItem>
                 <SelectItem value="l">Left</SelectItem>
@@ -284,7 +388,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Direction: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">Direction: default</SelectItem>
+                <SelectItem value="default">{{ badgeDirectionDefaultLabel }}</SelectItem>
                 <SelectItem value="h">Horizontal</SelectItem>
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
@@ -296,7 +400,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Blur: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">Blur: default</SelectItem>
+                <SelectItem value="default">{{ blurDefaultLabel }}</SelectItem>
                 <SelectItem value="true">Yes</SelectItem>
                 <SelectItem value="false">No</SelectItem>
               </SelectContent>
@@ -305,7 +409,35 @@ async function handleFetch() {
         </div>
         <div class="space-y-1 flex flex-col items-center">
           <p class="text-xs text-muted-foreground">Rating priority</p>
-          <RatingsOrderList v-model="ratingsOrderList" compact />
+          <RatingsOrderList v-model="ratingsOrderList" :excluded="ratingsExcludeList" compact />
+        </div>
+        <div class="space-y-1 flex flex-col items-center">
+          <p class="text-xs text-muted-foreground">Exclude ratings</p>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 max-w-sm w-full">
+            <div
+              v-for="source in ALL_RATING_SOURCES"
+              :key="source.key"
+              class="flex items-start gap-1.5 text-left"
+            >
+              <Checkbox
+                :id="`free-exclude-${source.key}`"
+                :model-value="isExcluded(source.key)"
+                :aria-label="`Exclude ${source.label}`"
+                class="bg-background shrink-0 mt-0.5"
+                @update:model-value="(v) => toggleExclude(source.key, !!v)"
+              />
+              <Label
+                :for="`free-exclude-${source.key}`"
+                class="flex items-start gap-1.5 text-xs font-normal leading-snug cursor-pointer min-w-0"
+              >
+                <span
+                  class="inline-block w-2 h-2 rounded-full shrink-0 mt-1"
+                  :style="{ backgroundColor: source.color }"
+                ></span>
+                <span>{{ source.label }}</span>
+              </Label>
+            </div>
+          </div>
         </div>
         <code class="block text-xs font-mono bg-muted px-3 py-2 rounded text-muted-foreground break-all select-all">{{ curlExample }}</code>
         <div class="flex flex-wrap gap-2">

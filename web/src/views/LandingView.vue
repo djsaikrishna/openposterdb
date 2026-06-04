@@ -189,7 +189,7 @@ const episodes = [
           <div class="pt-4">
             <NavButtons />
           </div>
-          <div class="pt-4 max-w-lg mx-auto">
+          <div class="pt-4 max-w-xl mx-auto">
             <FreeApiKeyCard />
           </div>
           <!-- Feature cards -->

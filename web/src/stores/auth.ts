@@ -1,12 +1,36 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authApi } from '@/lib/auth-api'
+import { authApi, type FreeKeyDefaults } from '@/lib/auth-api'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
   const setupRequired = ref<boolean | null>(null)
   const freeApiKeyEnabled = ref(false)
   const disablePublicPages = ref(false)
+
+  // Global default render settings the free key serves with. Fetched lazily and
+  // memoized so the card (rendered on both the landing and login pages) reads it
+  // once per session; the backend serves it from cache, so no repeat DB reads.
+  const freeKeyDefaults = ref<FreeKeyDefaults | null>(null)
+  let freeKeyDefaultsPromise: Promise<void> | null = null
+
+  async function loadFreeKeyDefaults(): Promise<void> {
+    if (freeKeyDefaults.value) return
+    if (freeKeyDefaultsPromise) return freeKeyDefaultsPromise
+    freeKeyDefaultsPromise = (async () => {
+      try {
+        const res = await authApi.freeKeySettings()
+        if (res.ok) {
+          freeKeyDefaults.value = await res.json()
+        }
+      } catch {
+        // Non-fatal: the card falls back to its built-in defaults.
+      } finally {
+        freeKeyDefaultsPromise = null
+      }
+    })()
+    return freeKeyDefaultsPromise
+  }
 
   // API key session state (sessionStorage so it clears on tab close)
   const apiKeyToken = ref<string | null>(sessionStorage.getItem('apiKeyToken'))
@@ -94,6 +118,8 @@ export const useAuthStore = defineStore('auth', () => {
     setupRequired,
     freeApiKeyEnabled,
     disablePublicPages,
+    freeKeyDefaults,
+    loadFreeKeyDefaults,
     checkSetupRequired,
     setup,
     login,
