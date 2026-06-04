@@ -433,6 +433,25 @@ pub fn available_sources_string(badges: &[RatingBadge]) -> String {
     sources.iter().map(|s| s.cache_char()).collect()
 }
 
+/// Canonical, order-independent cache token for an exclude set (e.g. `"k"` for
+/// `"trakt"`, `"rt"` for both `"rt,tmdb"` and `"tmdb,rt"`).
+///
+/// `ratings_cache_suffix` can collapse two different exclude sets to the same
+/// predicted suffix when an excluded source falls *beyond* the rating limit in
+/// the canonical-padded prediction. The CDN `settings_hash` must still tell
+/// those configs apart — they render differently for titles with partial source
+/// availability — so it hashes this token alongside the predicted suffix.
+/// Canonicalising (sort + dedup) keeps semantically-equal excludes hashing the
+/// same, so it introduces no false cache misses.
+pub fn exclude_cache_token(exclude: &str) -> String {
+    let mut sources = parse_order(exclude);
+    sources.sort_by_key(|s| {
+        CANONICAL_ORDER.iter().position(|&k| RatingSource::from_key(k) == Some(*s)).unwrap_or(usize::MAX)
+    });
+    sources.dedup();
+    sources.iter().map(|s| s.cache_char()).collect()
+}
+
 /// Canonical order of all rating sources, used for deterministic cache keys.
 const CANONICAL_ORDER: &[&str] = &["mal", "imdb", "lb", "rt", "rta", "mc", "tmdb", "trakt"];
 
@@ -447,10 +466,24 @@ fn parse_order(order: &str) -> Vec<RatingSource> {
 
 /// Reorder `sources` according to `order`, appending any sources not mentioned
 /// in `order` in their original order, then truncate to `limit` (0 = no ratings).
-fn order_and_limit(sources: Vec<RatingSource>, order: &str, limit: i32) -> Vec<RatingSource> {
+///
+/// Sources named in `exclude` (a comma-separated list of rating source keys) are
+/// dropped up front — *before* ordering and limiting — so that excluding a source
+/// you don't care about frees its badge slot for the next preferred source rather
+/// than just leaving a gap.
+fn order_and_limit(sources: Vec<RatingSource>, order: &str, exclude: &str, limit: i32) -> Vec<RatingSource> {
     if limit == 0 {
         return Vec::new();
     }
+
+    // Drop excluded sources first so the remaining preferred sources can fill
+    // the available slots up to `limit`.
+    let excluded = parse_order(exclude);
+    let sources: Vec<RatingSource> = if excluded.is_empty() {
+        sources
+    } else {
+        sources.into_iter().filter(|s| !excluded.contains(s)).collect()
+    };
 
     let mut result = if order.is_empty() {
         sources
@@ -482,13 +515,13 @@ fn order_and_limit(sources: Vec<RatingSource>, order: &str, limit: i32) -> Vec<R
 /// Uses the same ordering logic as `apply_rating_preferences` +
 /// `badges_cache_suffix` but operates on source chars instead of full
 /// `RatingBadge` structs.
-pub fn badges_suffix_from_available(available_sources: &str, order: &str, limit: i32) -> String {
+pub fn badges_suffix_from_available(available_sources: &str, order: &str, exclude: &str, limit: i32) -> String {
     let available: Vec<RatingSource> = available_sources
         .chars()
         .filter_map(RatingSource::from_cache_char)
         .collect();
 
-    let ordered = order_and_limit(available, order, limit);
+    let ordered = order_and_limit(available, order, exclude, limit);
 
     let chars: String = ordered.iter().map(|s| s.cache_char()).collect();
     format!("@{chars}")
@@ -497,9 +530,14 @@ pub fn badges_suffix_from_available(available_sources: &str, order: &str, limit:
 /// Compute a deterministic cache key suffix from rating preferences.
 ///
 /// Parses `order` into known `RatingSource` keys, appends any missing sources
-/// in canonical order for determinism, then truncates to `limit` if positive.
-/// Returns a compact string like `@mil` (single-char per source, no commas).
-pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
+/// in canonical order for determinism, drops any sources named in `exclude`,
+/// then truncates to `limit` if positive. Returns a compact string like `@mil`
+/// (single-char per source, no commas).
+///
+/// Excluded sources MUST be folded in here (and removed before the `limit`
+/// truncation, matching `order_and_limit`) so that two configurations differing
+/// only in `exclude` produce different cache keys and never collide.
+pub fn ratings_cache_suffix(order: &str, exclude: &str, limit: i32) -> String {
     if limit == 0 {
         return "@".to_string();
     }
@@ -515,6 +553,13 @@ pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
         }
     }
 
+    // Drop excluded sources before truncating so this predicted suffix matches
+    // the badges produced by `order_and_limit` (which excludes before limiting).
+    let excluded = parse_order(exclude);
+    if !excluded.is_empty() {
+        sources.retain(|s| !excluded.contains(s));
+    }
+
     debug_assert!(limit > 0, "negative limit is not supported");
     sources.truncate(limit as usize);
 
@@ -526,11 +571,13 @@ pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
 ///
 /// - If `order` is non-empty, badges are reordered to match the specified order.
 ///   Unmentioned sources are appended after in their original order.
+/// - Sources named in `exclude` (comma-separated keys) are dropped before
+///   ordering and limiting.
 /// - If `limit` is 0, an empty list is returned (no ratings).
 /// - If `limit` > 0, the result is truncated to that many badges.
-pub fn apply_rating_preferences(badges: Vec<RatingBadge>, order: &str, limit: i32) -> Vec<RatingBadge> {
+pub fn apply_rating_preferences(badges: Vec<RatingBadge>, order: &str, exclude: &str, limit: i32) -> Vec<RatingBadge> {
     let sources: Vec<RatingSource> = badges.iter().map(|b| b.source).collect();
-    let ordered_sources = order_and_limit(sources, order, limit);
+    let ordered_sources = order_and_limit(sources, order, exclude, limit);
 
     let mut result = Vec::with_capacity(ordered_sources.len());
     for src in &ordered_sources {
@@ -597,7 +644,7 @@ mod tests {
             RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
             RatingBadge { source: RatingSource::Trakt, value: "80%".into() },
         ];
-        let result = apply_rating_preferences(badges, "trakt,imdb", 8);
+        let result = apply_rating_preferences(badges, "trakt,imdb", "", 8);
         assert_eq!(result[0].source, RatingSource::Trakt);
         assert_eq!(result[1].source, RatingSource::Imdb);
         assert_eq!(result[2].source, RatingSource::Tmdb);
@@ -610,7 +657,7 @@ mod tests {
             RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
             RatingBadge { source: RatingSource::Trakt, value: "80%".into() },
         ];
-        let result = apply_rating_preferences(badges, "", 2);
+        let result = apply_rating_preferences(badges, "", "", 2);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].source, RatingSource::Imdb);
         assert_eq!(result[1].source, RatingSource::Tmdb);
@@ -624,7 +671,7 @@ mod tests {
             RatingBadge { source: RatingSource::Mal, value: "8.50".into() },
             RatingBadge { source: RatingSource::Trakt, value: "80%".into() },
         ];
-        let result = apply_rating_preferences(badges, "mal,imdb,rta,trakt", 3);
+        let result = apply_rating_preferences(badges, "mal,imdb,rta,trakt", "", 3);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].source, RatingSource::Mal);
         assert_eq!(result[1].source, RatingSource::Imdb);
@@ -637,8 +684,89 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
             RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
         ];
-        let result = apply_rating_preferences(badges.clone(), "", 0);
+        let result = apply_rating_preferences(badges.clone(), "", "", 0);
         assert_eq!(result.len(), 0, "limit=0 should return no ratings");
+    }
+
+    #[test]
+    fn apply_rating_preferences_excludes_source() {
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".into() },
+            RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
+        ];
+        // Exclude RT critics — the user doesn't care about it.
+        let result = apply_rating_preferences(badges, "imdb,rt,tmdb", "rt", 8);
+        let sources: Vec<RatingSource> = result.iter().map(|b| b.source).collect();
+        assert_eq!(sources, vec![RatingSource::Imdb, RatingSource::Tmdb]);
+    }
+
+    #[test]
+    fn apply_rating_preferences_exclude_frees_limit_slot() {
+        // exclude is applied BEFORE the limit, so dropping RT lets TMDB take its
+        // slot rather than leaving the user with fewer badges than `limit`.
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".into() },
+            RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
+        ];
+        let result = apply_rating_preferences(badges, "imdb,rt,tmdb", "rt", 2);
+        let sources: Vec<RatingSource> = result.iter().map(|b| b.source).collect();
+        assert_eq!(sources, vec![RatingSource::Imdb, RatingSource::Tmdb]);
+    }
+
+    #[test]
+    fn apply_rating_preferences_exclude_multiple() {
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".into() },
+            RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
+            RatingBadge { source: RatingSource::Mal, value: "8.50".into() },
+        ];
+        let result = apply_rating_preferences(badges, "", "rt,tmdb", 8);
+        let sources: Vec<RatingSource> = result.iter().map(|b| b.source).collect();
+        assert_eq!(sources, vec![RatingSource::Imdb, RatingSource::Mal]);
+    }
+
+    #[test]
+    fn ratings_cache_suffix_exclude_changes_suffix() {
+        // The cache-collision guard: same order+limit but different exclusions
+        // MUST yield different suffixes, or cached images would collide.
+        let none = ratings_cache_suffix("imdb,tmdb,rt", "", 3);
+        let excl = ratings_cache_suffix("imdb,tmdb,rt", "rt", 3);
+        assert_ne!(none, excl, "excluding a source must change the cache suffix");
+        assert_eq!(none, "@itr");
+        // rt dropped before truncate; the next canonical source fills the slot.
+        assert_eq!(excl, "@itm");
+    }
+
+    #[test]
+    fn ratings_cache_suffix_exclude_matches_apply_pipeline() {
+        // The predicted suffix must equal the suffix of the actually-rendered
+        // badges for the same order/exclude/limit.
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".into() },
+            RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
+        ];
+        let available = available_sources_string(&badges); // "irt"
+        let filtered = apply_rating_preferences(badges, "imdb,rt,tmdb", "rt", 3);
+        let expected = badges_cache_suffix(&filtered);
+        let from_available = badges_suffix_from_available(&available, "imdb,rt,tmdb", "rt", 3);
+        assert_eq!(from_available, expected);
+    }
+
+    #[test]
+    fn exclude_cache_token_canonical_and_order_independent() {
+        assert_eq!(exclude_cache_token(""), "");
+        assert_eq!(exclude_cache_token("trakt"), "k");
+        // Order-independent + deduped to canonical source order (rt before tmdb).
+        assert_eq!(exclude_cache_token("rt,tmdb"), exclude_cache_token("tmdb,rt"));
+        assert_eq!(exclude_cache_token("tmdb,rt"), "rt");
+        // Different exclude sets yield different tokens.
+        assert_ne!(exclude_cache_token("rt"), exclude_cache_token("trakt"));
+        // Unknown keys are ignored.
+        assert_eq!(exclude_cache_token("bogus"), "");
     }
 
     #[test]
@@ -666,38 +794,38 @@ mod tests {
 
     #[test]
     fn ratings_cache_suffix_default_order_limit_3() {
-        let suffix = ratings_cache_suffix("mal,imdb,lb,rt,rta,mc,tmdb,trakt", 3);
+        let suffix = ratings_cache_suffix("mal,imdb,lb,rt,rta,mc,tmdb,trakt", "", 3);
         assert_eq!(suffix, "@mil");
     }
 
     #[test]
     fn ratings_cache_suffix_custom_order() {
-        let suffix = ratings_cache_suffix("trakt,imdb,rt", 3);
+        let suffix = ratings_cache_suffix("trakt,imdb,rt", "", 3);
         assert_eq!(suffix, "@kir");
     }
 
     #[test]
     fn ratings_cache_suffix_partial_order_normalized() {
         // Only two sources specified — missing ones appended in canonical order
-        let suffix = ratings_cache_suffix("imdb,rt", 8);
+        let suffix = ratings_cache_suffix("imdb,rt", "", 8);
         assert_eq!(suffix, "@irmlactk");
     }
 
     #[test]
     fn ratings_cache_suffix_limit_zero_shows_none() {
-        let suffix = ratings_cache_suffix("mal,imdb,lb,rt,rta,mc,tmdb,trakt", 0);
+        let suffix = ratings_cache_suffix("mal,imdb,lb,rt,rta,mc,tmdb,trakt", "", 0);
         assert_eq!(suffix, "@");
     }
 
     #[test]
     fn ratings_cache_suffix_empty_order() {
-        let suffix = ratings_cache_suffix("", 3);
+        let suffix = ratings_cache_suffix("", "", 3);
         assert_eq!(suffix, "@mil");
     }
 
     #[test]
     fn ratings_cache_suffix_invalid_sources_ignored() {
-        let suffix = ratings_cache_suffix("imdb,bogus,rt,fake", 3);
+        let suffix = ratings_cache_suffix("imdb,bogus,rt,fake", "", 3);
         assert_eq!(suffix, "@irm");
     }
 
@@ -749,29 +877,29 @@ mod tests {
         assert_eq!(available, "irt");
 
         // Full pipeline: apply_rating_preferences then badges_cache_suffix
-        let filtered = apply_rating_preferences(badges, "imdb,rt,tmdb", 3);
+        let filtered = apply_rating_preferences(badges, "imdb,rt,tmdb", "", 3);
         let expected = badges_cache_suffix(&filtered);
 
         // SQLite fast path: badges_suffix_from_available
-        let actual = badges_suffix_from_available(&available, "imdb,rt,tmdb", 3);
+        let actual = badges_suffix_from_available(&available, "imdb,rt,tmdb", "", 3);
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn badges_suffix_from_available_respects_limit() {
-        let suffix = badges_suffix_from_available("irt", "imdb,rt,tmdb", 2);
+        let suffix = badges_suffix_from_available("irt", "imdb,rt,tmdb", "", 2);
         assert_eq!(suffix, "@ir");
     }
 
     #[test]
     fn badges_suffix_from_available_respects_order() {
-        let suffix = badges_suffix_from_available("irt", "tmdb,rt,imdb", 3);
+        let suffix = badges_suffix_from_available("irt", "tmdb,rt,imdb", "", 3);
         assert_eq!(suffix, "@tri");
     }
 
     #[test]
     fn badges_suffix_from_available_empty() {
-        assert_eq!(badges_suffix_from_available("", "imdb,rt", 3), "@");
+        assert_eq!(badges_suffix_from_available("", "imdb,rt", "", 3), "@");
     }
 
     #[test]

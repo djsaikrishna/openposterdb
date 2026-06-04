@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ALL_RATING_SOURCES, DEFAULT_RATINGS_ORDER, parseRatingsOrder } from '@/lib/constants'
+import { ALL_RATING_SOURCES, DEFAULT_RATINGS_ORDER, parseRatingsOrder, parseRatingsExclude } from '@/lib/constants'
 
 describe('ALL_RATING_SOURCES', () => {
   it('has 8 rating sources', () => {
@@ -64,5 +64,23 @@ describe('parseRatingsOrder', () => {
     const result = parseRatingsOrder('imdb,tmdb')
     const imdbCount = result.filter((k: string) => k === 'imdb').length
     expect(imdbCount).toBe(1)
+  })
+})
+
+describe('parseRatingsExclude', () => {
+  it('returns empty array for empty string', () => {
+    expect(parseRatingsExclude('')).toEqual([])
+  })
+
+  it('returns only the explicitly listed keys (does NOT append missing)', () => {
+    expect(parseRatingsExclude('rt,trakt')).toEqual(['rt', 'trakt'])
+  })
+
+  it('trims whitespace around keys', () => {
+    expect(parseRatingsExclude(' rt , mc ')).toEqual(['rt', 'mc'])
+  })
+
+  it('drops unknown keys', () => {
+    expect(parseRatingsExclude('rt,bogus,mal')).toEqual(['rt', 'mal'])
   })
 })

@@ -66,6 +66,10 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub ratings_order: Option<String>,
+    /// Comma-separated rating source keys to exclude from display (e.g. `rt,trakt`). Applied before ordering and limiting, so excluded sources free their badge slots for the next preferred source.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub ratings_exclude: Option<String>,
     /// Badge layout style: `h` (horizontal), `v` (vertical), `d` (default).
     #[serde(default)]
     #[param(value_type = Option<String>)]
@@ -105,6 +109,7 @@ impl ImageQuery {
     fn has_overrides(&self) -> bool {
         self.ratings_limit.is_some()
             || self.ratings_order.is_some()
+            || self.ratings_exclude.is_some()
             || self.badge_style.is_some()
             || self.label_style.is_some()
             || self.badge_size.is_some()
@@ -252,6 +257,11 @@ fn apply_query_overrides(
     if let Some(ref order) = query.ratings_order {
         db::validate_ratings_order(order).map_err(|e| e.into_response())?;
         s.ratings_order = Arc::from(order.as_str());
+    }
+    // Exclusion applies to every image type (it is not per-type, unlike ratings_limit).
+    if let Some(ref exclude) = query.ratings_exclude {
+        db::validate_ratings_exclude(exclude).map_err(|e| e.into_response())?;
+        s.ratings_exclude = Arc::from(exclude.as_str());
     }
     if let Some(style) = query.badge_style {
         match kind {
@@ -706,6 +716,7 @@ mod tests {
             image_size: None,
             ratings_limit: None,
             ratings_order: None,
+            ratings_exclude: None,
             badge_style: None,
             label_style: None,
             badge_size: None,
@@ -739,11 +750,13 @@ mod tests {
             image_source: Some(ImageSource::Fanart),
             textless: Some(true),
             ratings_order: Some("imdb,tmdb".into()),
+            ratings_exclude: Some("rt".into()),
             ..empty_query()
         };
         let result =
             apply_query_overrides(settings, &query, cache::ImageType::Poster).unwrap();
         assert_eq!(result.ratings_limit, 3);
+        assert_eq!(&*result.ratings_exclude, "rt");
         assert_eq!(result.poster_badge_style, BadgeStyle::Horizontal);
         assert_eq!(result.poster_label_style, LabelStyle::Icon);
         assert_eq!(result.poster_badge_size, BadgeSize::Large);
@@ -832,6 +845,30 @@ mod tests {
         };
         let result = apply_query_overrides(settings, &query, cache::ImageType::Poster);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_query_overrides_rejects_invalid_ratings_exclude() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            ratings_exclude: Some("bogus_source".into()),
+            ..empty_query()
+        };
+        let result = apply_query_overrides(settings, &query, cache::ImageType::Poster);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_query_overrides_ratings_exclude_applies_to_logo() {
+        // Exclusion is not poster-only — it should apply on every image type.
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            ratings_exclude: Some("rt,trakt".into()),
+            ..empty_query()
+        };
+        let result =
+            apply_query_overrides(settings, &query, cache::ImageType::Logo).unwrap();
+        assert_eq!(&*result.ratings_exclude, "rt,trakt");
     }
 
     #[test]

@@ -55,6 +55,7 @@ async function toggleFreeApiKey() {
     textless: s.textless,
     ratings_limit: s.ratings_limit,
     ratings_order: s.ratings_order,
+    ratings_exclude: s.ratings_exclude,
     poster_position: s.poster_position,
     logo_ratings_limit: s.logo_ratings_limit,
     backdrop_ratings_limit: s.backdrop_ratings_limit,

@@ -34,6 +34,7 @@ fn test_upsert(key_id: i32) -> UpsertApiKeySettings<'static> {
         episode_position: "tr",
         episode_badge_direction: "v",
         episode_blur: false,
+        ratings_exclude: "",
     }
 }
 

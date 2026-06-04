@@ -100,6 +100,7 @@ pub struct RenderSettingsResponse {
     pub is_default: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
+    pub ratings_exclude: String,
     pub poster_position: BadgePosition,
     pub logo_ratings_limit: i32,
     pub backdrop_ratings_limit: i32,
@@ -144,6 +145,7 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         is_default: settings.is_default,
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order.to_string(),
+        ratings_exclude: settings.ratings_exclude.to_string(),
         poster_position: settings.poster_position,
         logo_ratings_limit: settings.logo_ratings_limit,
         backdrop_ratings_limit: settings.backdrop_ratings_limit,
@@ -181,6 +183,8 @@ pub struct UpdateSettingsRequest {
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
+    #[serde(default = "db::default_ratings_exclude")]
+    pub ratings_exclude: String,
     #[serde(default = "db::default_poster_position")]
     pub poster_position: BadgePosition,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
@@ -235,6 +239,7 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         textless: req.textless,
         ratings_limit: req.ratings_limit,
         ratings_order: &req.ratings_order,
+        ratings_exclude: &req.ratings_exclude,
         poster_position: req.poster_position.as_str(),
         logo_ratings_limit: req.logo_ratings_limit,
         backdrop_ratings_limit: req.backdrop_ratings_limit,
@@ -268,7 +273,7 @@ pub async fn update_settings(
     db::find_api_key_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::IdNotFound(format!("API key {id} not found")))?;
-    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, &req.ratings_exclude, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
     db::upsert_api_key_settings(&state.db, build_upsert(id, &req)).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))
@@ -316,7 +321,7 @@ pub async fn update_own_settings(
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<Value>, AppError> {
     let id = api_key_user.key_id;
-    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, &req.ratings_exclude, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
     db::upsert_api_key_settings(&state.db, build_upsert(id, &req)).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))

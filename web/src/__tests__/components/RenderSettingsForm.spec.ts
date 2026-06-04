@@ -14,6 +14,7 @@ const defaultSettings: RenderSettings = {
   fanart_available: true,
   ratings_limit: 3,
   ratings_order: 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
+  ratings_exclude: '',
   poster_position: 'bc',
   logo_ratings_limit: 3,
   backdrop_ratings_limit: 3,
@@ -82,7 +83,7 @@ describe('RenderSettingsForm', () => {
     mountForm({}, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(3, 'mal,imdb,lb,rt,rta,mc,tmdb,trakt', 'bc', 'h', 'i', 'd', 'm')
+    expect(fetchPreview).toHaveBeenCalledWith(3, 'mal,imdb,lb,rt,rta,mc,tmdb,trakt', 'bc', 'h', 'i', 'd', 'm', '')
   })
 
   it('calls fetchPreview with correct params for custom settings', async () => {
@@ -90,7 +91,7 @@ describe('RenderSettingsForm', () => {
     mountForm({ ratings_limit: 5, ratings_order: 'imdb,rt,tmdb' }, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(5, expect.stringContaining('imdb'), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String))
+    expect(fetchPreview).toHaveBeenCalledWith(5, expect.stringContaining('imdb'), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), '')
   })
 
   it('sets preview src from blob after fetch', async () => {
@@ -117,7 +118,7 @@ describe('RenderSettingsForm', () => {
     vi.advanceTimersByTime(500)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(5, expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String))
+    expect(fetchPreview).toHaveBeenCalledWith(5, expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), '')
   })
 
   it('shows loading state while preview loads', async () => {
@@ -174,7 +175,7 @@ describe('RenderSettingsForm', () => {
     mountForm({ poster_position: 'l' }, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'l', 'h', 'i', 'd', 'm')
+    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'l', 'h', 'i', 'd', 'm', '')
   })
 
   it('hides fanart checkbox when fanart_available is false', () => {
@@ -230,12 +231,51 @@ describe('RenderSettingsForm', () => {
     expect(select.exists()).toBe(true)
   })
 
+  // --- Exclude ratings ---
+
+  it('renders an exclude checkbox for every rating source', () => {
+    const wrapper = mountForm()
+    for (const key of ['imdb', 'tmdb', 'rt', 'rta', 'mc', 'trakt', 'lb', 'mal']) {
+      expect(wrapper.find(`[data-testid="exclude-${key}-checkbox"]`).exists()).toBe(true)
+    }
+  })
+
+  it('initializes exclude checkboxes from ratings_exclude', () => {
+    const wrapper = mountForm({ ratings_exclude: 'rt' })
+    expect((wrapper.find('[data-testid="exclude-rt-checkbox"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.find('[data-testid="exclude-imdb-checkbox"]').element as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('toggling an exclude checkbox auto-saves ratings_exclude', async () => {
+    const saveSettings = vi.fn().mockResolvedValue(null)
+    const settings = { ...defaultSettings, ratings_exclude: '' }
+    const wrapper = mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings,
+        fetchPreview: makeFetchPreview(),
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+
+    await wrapper.find('[data-testid="exclude-rt-checkbox"]').setValue(true)
+    await flushPromises()
+
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ ratings_exclude: 'rt' }),
+    )
+  })
+
   it('calls fetchPreview with badge direction', async () => {
     const fetchPreview = makeFetchPreview()
     mountForm({ poster_badge_direction: 'v' }, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'bc', 'h', 'i', 'v', 'm')
+    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'bc', 'h', 'i', 'v', 'm', '')
   })
 
   // --- Episode preview ---
@@ -292,6 +332,7 @@ describe('RenderSettingsForm', () => {
       'tr', // episode_position
       'v', // episode_badge_direction
       false, // episode_blur
+      '', // ratings_exclude
     )
   })
 

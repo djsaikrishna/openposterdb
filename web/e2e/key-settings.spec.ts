@@ -107,6 +107,13 @@ test.describe('key settings (self-service)', () => {
     await expect(limitInput).toHaveValue('3')
   })
 
+  test('exclude ratings section is visible', async ({ page, request }) => {
+    await loginWithApiKey(page, request)
+
+    await expect(page.locator('text=Exclude ratings')).toBeVisible()
+    await expect(page.getByTestId('exclude-rt-checkbox')).toBeVisible()
+  })
+
   test('reset to defaults works', async ({ page, request }) => {
     // Ensure global settings are at a known state before testing reset.
     // Other tests (e.g. settings.spec.ts) may change global poster_source,

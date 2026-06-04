@@ -112,6 +112,27 @@ test.describe('settings', () => {
     await expect(page.locator('#ratings-limit-global')).toHaveValue('5')
   })
 
+  test('exclude ratings section is visible with a checkbox per source', async ({ page }) => {
+    await expect(page.locator('text=Exclude ratings')).toBeVisible()
+    await expect(page.getByTestId('exclude-rt-checkbox')).toBeVisible()
+    await expect(page.getByTestId('exclude-mal-checkbox')).toBeVisible()
+  })
+
+  test('excluding a rating persists after auto-save and reload', async ({ page }) => {
+    const excludeRt = page.getByTestId('exclude-rt-checkbox')
+    await expect(excludeRt).not.toBeChecked()
+
+    // Exclude Rotten Tomatoes (Critics) — the scenario from issue #17
+    await excludeRt.check()
+    await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
+
+    await page.reload()
+    await expect(page.locator('h1')).toContainText('Settings')
+
+    // Exclusion should be preserved across reload
+    await expect(page.getByTestId('exclude-rt-checkbox')).toBeChecked()
+  })
+
   test('sidebar navigation to settings works', async ({ page }) => {
     // Navigate away
     await page.click('text=Dashboard')
