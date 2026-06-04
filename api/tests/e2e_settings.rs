@@ -426,7 +426,7 @@ async fn global_settings_rejects_invalid_ratings_limit() {
 
     let update = json!({
         "image_source": "t",
-        "ratings_limit": 10,
+        "ratings_limit": 11,
     });
     let req = authed_request("PUT", "/api/admin/settings", &token, Some(update));
     let res = app.clone().oneshot(req).await.unwrap();
@@ -517,7 +517,7 @@ async fn per_key_settings_rejects_invalid_logo_ratings_limit() {
 
     let update = json!({
         "image_source": "t",
-        "logo_ratings_limit": 9,
+        "logo_ratings_limit": 11,
     });
     let req = authed_request("PUT", &format!("/api/keys/{key_id}/settings"), &token, Some(update));
     let res = app.clone().oneshot(req).await.unwrap();

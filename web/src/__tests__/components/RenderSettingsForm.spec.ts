@@ -83,7 +83,7 @@ describe('RenderSettingsForm', () => {
     mountForm({}, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(3, 'mal,imdb,lb,rt,rta,mc,tmdb,trakt', 'bc', 'h', 'i', 'd', 'm', '')
+    expect(fetchPreview).toHaveBeenCalledWith(3, 'mal,imdb,lb,rt,rta,mc,tmdb,trakt,mdblist,ebert', 'bc', 'h', 'i', 'd', 'm', '')
   })
 
   it('calls fetchPreview with correct params for custom settings', async () => {
@@ -235,7 +235,7 @@ describe('RenderSettingsForm', () => {
 
   it('renders an exclude checkbox for every rating source', () => {
     const wrapper = mountForm()
-    for (const key of ['imdb', 'tmdb', 'rt', 'rta', 'mc', 'trakt', 'lb', 'mal']) {
+    for (const key of ['imdb', 'tmdb', 'rt', 'rta', 'mc', 'trakt', 'lb', 'mal', 'mdblist', 'ebert']) {
       expect(wrapper.find(`[data-testid="exclude-${key}-checkbox"]`).exists()).toBe(true)
     }
   })

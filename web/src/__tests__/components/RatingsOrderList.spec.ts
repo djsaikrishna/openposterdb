@@ -135,15 +135,15 @@ describe('RatingsOrderList', () => {
     expect(container.exists()).toBe(true)
   })
 
-  it('handles all 8 rating sources', () => {
+  it('handles all 10 rating sources', () => {
     const allKeys = ALL_RATING_SOURCES.map(s => s.key)
     const wrapper = mountWithModel(allKeys)
 
     const rows = wrapper.findAll('.flex.items-center')
-    expect(rows).toHaveLength(8)
+    expect(rows).toHaveLength(10)
 
     // Verify all up/down buttons exist (2 per row)
     const buttons = wrapper.findAll('button')
-    expect(buttons).toHaveLength(16)
+    expect(buttons).toHaveLength(20)
   })
 })

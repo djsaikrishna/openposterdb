@@ -184,7 +184,7 @@ pub const SCHEMA_SQL: &[&str] = &[
         lang                   TEXT NOT NULL DEFAULT 'en',
         textless               INTEGER NOT NULL DEFAULT 0,
         ratings_limit          INTEGER NOT NULL DEFAULT 3,
-        ratings_order          TEXT NOT NULL DEFAULT 'mal,imdb,lb,rt,mc,rta,tmdb,trakt',
+        ratings_order          TEXT NOT NULL DEFAULT 'mal,imdb,lb,rt,mc,rta,tmdb,trakt,mdblist,ebert',
         poster_position        TEXT NOT NULL DEFAULT 'bc',
         logo_ratings_limit     INTEGER NOT NULL DEFAULT 5,
         backdrop_ratings_limit INTEGER NOT NULL DEFAULT 5,

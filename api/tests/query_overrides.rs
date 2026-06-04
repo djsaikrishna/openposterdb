@@ -131,7 +131,7 @@ async fn poster_invalid_ratings_limit_rejected() {
 
     let req = Request::builder()
         .uri(format!(
-            "/{api_key}/imdb/poster-default/tt0000001.jpg?ratings_limit=9"
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?ratings_limit=11"
         ))
         .body(Body::empty())
         .unwrap();
@@ -378,13 +378,13 @@ async fn poster_ratings_limit_zero_accepted() {
 }
 
 #[tokio::test]
-async fn poster_ratings_limit_eight_accepted() {
+async fn poster_ratings_limit_ten_accepted() {
     let (app, _) = common::setup_test_app().await;
     let api_key = create_api_key(&app).await;
 
     let req = Request::builder()
         .uri(format!(
-            "/{api_key}/imdb/poster-default/tt0000001.jpg?ratings_limit=8"
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?ratings_limit=10"
         ))
         .body(Body::empty())
         .unwrap();

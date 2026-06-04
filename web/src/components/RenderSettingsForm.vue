@@ -595,7 +595,7 @@ function toggleExclude(key: string, checked: boolean) {
                 v-model.number="editRatingsLimit"
                 type="number"
                 :min="0"
-                :max="8"
+                :max="10"
                 class="w-[80px]"
                 title="0 = no ratings"
               />
@@ -689,7 +689,7 @@ function toggleExclude(key: string, checked: boolean) {
                 v-model.number="editLogoRatingsLimit"
                 type="number"
                 :min="0"
-                :max="8"
+                :max="10"
                 class="w-[80px]"
                 title="0 = no ratings"
               />
@@ -811,7 +811,7 @@ function toggleExclude(key: string, checked: boolean) {
                 v-model.number="editBackdropRatingsLimit"
                 type="number"
                 :min="0"
-                :max="8"
+                :max="10"
                 class="w-[80px]"
                 title="0 = no ratings"
               />
@@ -933,7 +933,7 @@ function toggleExclude(key: string, checked: boolean) {
                 v-model.number="editEpisodeRatingsLimit"
                 type="number"
                 :min="0"
-                :max="8"
+                :max="10"
                 class="w-[80px]"
                 title="0 = no ratings"
               />

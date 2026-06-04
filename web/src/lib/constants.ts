@@ -57,9 +57,11 @@ export const ALL_RATING_SOURCES = [
   { key: 'trakt', label: 'Trakt', color: '#af0f2d' },
   { key: 'lb', label: 'Letterboxd', color: '#009b58' },
   { key: 'mal', label: 'MyAnimeList', color: '#223c78' },
+  { key: 'mdblist', label: 'MDBList', color: '#4284CA' },
+  { key: 'ebert', label: 'Roger Ebert', color: '#e8590c' },
 ] as const
 
-export const DEFAULT_RATINGS_ORDER = 'mal,imdb,lb,rt,mc,rta,tmdb,trakt'
+export const DEFAULT_RATINGS_ORDER = 'mal,imdb,lb,rt,mc,rta,tmdb,trakt,mdblist,ebert'
 
 export function parseRatingsOrder(order: string): string[] {
   const keys = order ? order.split(',').map(k => k.trim()).filter(Boolean) : []

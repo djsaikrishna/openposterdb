@@ -6,7 +6,7 @@
 
 # OpenPosterDB
 
-A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://ratingposterdb.com). Generates movie and TV show posters, logos, and backdrops with rating badges from multiple sources overlaid on them. Fetches art from TMDB (or optionally [Fanart.tv](https://fanart.tv)), aggregates ratings from IMDb, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, and composites color-coded badges onto the image.
+A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://ratingposterdb.com). Generates movie and TV show posters, logos, and backdrops with rating badges from multiple sources overlaid on them. Fetches art from TMDB (or optionally [Fanart.tv](https://fanart.tv)), aggregates ratings from IMDb, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, the MDBList score, and Roger Ebert, and composites color-coded badges onto the image.
 
 [GitHub](https://github.com/pnrxa/openposterdb) | [Docker Hub](https://hub.docker.com/r/pnrxa/openposterdb) | [GitHub Packages](https://ghcr.io/pnrxa/openposterdb)
 
@@ -122,8 +122,8 @@ GET /{api_key}/isValid
 - `?fallback=true`: accepted for RPDB plugin compatibility but ignored as OPDB falls back to TMDB by default
 - `?lang={code}`: override the image language for this request (e.g. `?lang=de` for German, `?lang=pt-BR` for Brazilian Portuguese). Supports regional variants — when a region-specific image exists (e.g. `pt-BR`), it is preferred; otherwise falls back to the base language (`pt`), then English. Applies to posters and logos. Backdrops are language-agnostic and ignore this parameter
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))
-- `?ratings_limit={0-8}`: maximum number of rating badges to display (0 = no ratings)
-- `?ratings_order={keys}`: comma-separated rating source keys controlling display order. Valid keys: `imdb`, `tmdb`, `rt` (RT Critics), `rta` (RT Audience), `mc` (Metacritic), `trakt`, `lb` (Letterboxd), `mal` (MyAnimeList). Example: `?ratings_order=imdb,tmdb,rt`
+- `?ratings_limit={0-10}`: maximum number of rating badges to display (0 = no ratings)
+- `?ratings_order={keys}`: comma-separated rating source keys controlling display order. Valid keys: `imdb`, `tmdb`, `rt` (RT Critics), `rta` (RT Audience), `mc` (Metacritic), `trakt`, `lb` (Letterboxd), `mal` (MyAnimeList), `mdblist` (MDBList score), `ebert` (Roger Ebert). Example: `?ratings_order=imdb,tmdb,rt`
 - `?ratings_exclude={keys}`: comma-separated rating source keys to hide entirely (same valid keys as `ratings_order`). Excluded sources are dropped *before* ordering and limiting, so an excluded source frees its badge slot for the next preferred source rather than leaving a gap. Example: `?ratings_exclude=rt` shows your ratings but never RT Critics
 - `?badge_style={h|v|d}`: badge layout — `h` (horizontal), `v` (vertical), `d` (default)
 - `?label_style={t|i|o}`: label rendering — `t` (text), `i` (icon), `o` (official provider logos)
@@ -180,7 +180,7 @@ The `?imageSize=` parameter controls the output dimensions. When omitted, `mediu
 
 ## Features
 
-- **Multi-source ratings** — Aggregates from MDBList (IMDb, RT Critics, RT Audience, Metacritic, Trakt, Letterboxd, MAL), optionally OMDb, and optionally Trakt directly (for episode-level ratings and as a standalone provider)
+- **Multi-source ratings** — Aggregates from MDBList (IMDb, RT Critics, RT Audience, Metacritic, Trakt, Letterboxd, MAL, the MDBList score, and Roger Ebert), optionally OMDb, and optionally Trakt directly (for episode-level ratings and as a standalone provider)
 - **Multiple image sources** — Uses TMDB as the primary source for posters, logos, and backdrops, with Fanart.tv as an optional fallback (or preferred source). Supports language selection and textless posters from both sources
 - **Configurable per API key** — Override image source, language, and textless settings per key, or set global defaults
 - **ID resolution** — Accepts IMDb, TMDB, or TVDB IDs
@@ -213,7 +213,7 @@ docker compose up -d
 - Rust toolchain
 - Node.js 20.19+ (for admin UI)
 - A [TMDB API key](https://www.themoviedb.org/settings/api)
-- At least one of: [MDBList API key](https://mdblist.com/preferences/) (preferred — covers all 7 rating sources), [OMDb API key](https://www.omdbapi.com/apikey.aspx), [Trakt Client ID](https://trakt.tv/oauth/applications)
+- At least one of: [MDBList API key](https://mdblist.com/preferences/) (preferred — covers all 9 rating sources), [OMDb API key](https://www.omdbapi.com/apikey.aspx), [Trakt Client ID](https://trakt.tv/oauth/applications)
 - Optional: [Fanart.tv API key](https://fanart.tv/get-an-api-key/) (enables Fanart.tv as an alternative or preferred image source)
 
 
@@ -247,7 +247,7 @@ See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
 |---|---|---|
 | `TMDB_API_KEY` | *required* | TMDB API v3 key |
 | `JWT_SECRET` | *required* | 32-byte hex string (`openssl rand -hex 32`) |
-| `MDBLIST_API_KEY` | — | MDBList key — preferred, covers all 7 rating sources (IMDb, RT Critics, RT Audience, Metacritic, Trakt, Letterboxd, MAL) |
+| `MDBLIST_API_KEY` | — | MDBList key — preferred, covers all 9 rating sources (IMDb, RT Critics, RT Audience, Metacritic, Trakt, Letterboxd, MAL, MDBList score, Roger Ebert) |
 | `OMDB_API_KEY` | — | OMDb key (IMDb, RT Critics, Metacritic only) |
 | `TRAKT_CLIENT_ID` | — | [Trakt](https://trakt.tv/oauth/applications) Client ID — provides Trakt community ratings for movies, shows, and episodes |
 | `LISTEN_ADDR` | `0.0.0.0:3000` | Server bind address |
