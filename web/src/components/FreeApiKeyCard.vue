@@ -12,6 +12,8 @@ import {
   BADGE_DIRECTION_LABELS,
   LABEL_STYLE_LABELS,
   BADGE_SIZE_LABELS,
+  BADGE_SHAPE_LABELS,
+  BADGE_BACKGROUND_LABELS,
   IMAGE_SOURCE_LABELS,
   POSITION_LABELS,
 } from '@/lib/constants'
@@ -52,6 +54,8 @@ const imageSize = ref<'default' | 'small' | 'medium' | 'large' | 'verylarge'>('d
 const badgeStyle = ref('default')
 const labelStyle = ref('default')
 const badgeSize = ref('default')
+const badgeShape = ref('default')
+const badgeBackground = ref('default')
 const ratingsLimit = ref('default')
 const badgeDirection = ref('default')
 const imagePosition = ref('default')
@@ -128,13 +132,13 @@ const typeDefaults = computed(() => {
   if (!d) return null
   switch (imageType.value) {
     case 'logo':
-      return { badge_style: d.logo_badge_style, label_style: d.logo_label_style, badge_size: d.logo_badge_size, ratings_limit: d.logo_ratings_limit, position: null as string | null, badge_direction: null as string | null }
+      return { badge_style: d.logo_badge_style, label_style: d.logo_label_style, badge_size: d.logo_badge_size, ratings_limit: d.logo_ratings_limit, position: null as string | null, badge_direction: null as string | null, badge_shape: d.logo_badge_shape, badge_background: d.logo_badge_background }
     case 'backdrop':
-      return { badge_style: d.backdrop_badge_style, label_style: d.backdrop_label_style, badge_size: d.backdrop_badge_size, ratings_limit: d.backdrop_ratings_limit, position: d.backdrop_position, badge_direction: d.backdrop_badge_direction }
+      return { badge_style: d.backdrop_badge_style, label_style: d.backdrop_label_style, badge_size: d.backdrop_badge_size, ratings_limit: d.backdrop_ratings_limit, position: d.backdrop_position, badge_direction: d.backdrop_badge_direction, badge_shape: d.backdrop_badge_shape, badge_background: d.backdrop_badge_background }
     case 'episode':
-      return { badge_style: d.episode_badge_style, label_style: d.episode_label_style, badge_size: d.episode_badge_size, ratings_limit: d.episode_ratings_limit, position: d.episode_position, badge_direction: d.episode_badge_direction }
+      return { badge_style: d.episode_badge_style, label_style: d.episode_label_style, badge_size: d.episode_badge_size, ratings_limit: d.episode_ratings_limit, position: d.episode_position, badge_direction: d.episode_badge_direction, badge_shape: d.episode_badge_shape, badge_background: d.episode_badge_background }
     default: // poster
-      return { badge_style: d.poster_badge_style, label_style: d.poster_label_style, badge_size: d.poster_badge_size, ratings_limit: d.ratings_limit, position: d.poster_position, badge_direction: d.poster_badge_direction }
+      return { badge_style: d.poster_badge_style, label_style: d.poster_label_style, badge_size: d.poster_badge_size, ratings_limit: d.ratings_limit, position: d.poster_position, badge_direction: d.poster_badge_direction, badge_shape: d.poster_badge_shape, badge_background: d.poster_badge_background }
   }
 })
 
@@ -154,6 +158,8 @@ const ratingsLimitDefaultLabel = computed(() => {
 const badgeStyleDefaultLabel = computed(() => annotate('Badge style', typeDefaults.value?.badge_style, BADGE_STYLE_LABELS))
 const labelStyleDefaultLabel = computed(() => annotate('Label style', typeDefaults.value?.label_style, LABEL_STYLE_LABELS))
 const badgeSizeDefaultLabel = computed(() => annotate('Badge size', typeDefaults.value?.badge_size, BADGE_SIZE_LABELS))
+const badgeShapeDefaultLabel = computed(() => annotate('Badge shape', typeDefaults.value?.badge_shape, BADGE_SHAPE_LABELS))
+const badgeBackgroundDefaultLabel = computed(() => annotate('Background', typeDefaults.value?.badge_background, BADGE_BACKGROUND_LABELS))
 const imageSourceDefaultLabel = computed(() => annotate('Source', defaults.value?.image_source, IMAGE_SOURCE_LABELS))
 const positionDefaultLabel = computed(() => annotate('Position', typeDefaults.value?.position, POSITION_LABELS))
 const badgeDirectionDefaultLabel = computed(() => annotate('Direction', typeDefaults.value?.badge_direction, BADGE_DIRECTION_LABELS))
@@ -210,6 +216,8 @@ const queryString = computed(() => {
   if (badgeStyle.value !== 'default') params.set('badge_style', badgeStyle.value)
   if (labelStyle.value !== 'default') params.set('label_style', labelStyle.value)
   if (badgeSize.value !== 'default') params.set('badge_size', badgeSize.value)
+  if (badgeShape.value !== 'default') params.set('badge_shape', badgeShape.value)
+  if (badgeBackground.value !== 'default') params.set('badge_background', badgeBackground.value)
   if (ratingsLimit.value !== 'default') params.set('ratings_limit', ratingsLimit.value)
   if (imageType.value !== 'logo' && badgeDirection.value !== 'default') params.set('badge_direction', badgeDirection.value)
   if (imageType.value !== 'logo' && imagePosition.value !== 'default') params.set('position', imagePosition.value)
@@ -342,6 +350,28 @@ async function handleFetch() {
               <SelectItem value="m">Medium</SelectItem>
               <SelectItem value="l">Large</SelectItem>
               <SelectItem value="xl">Extra Large</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="badgeShape">
+            <SelectTrigger id="free-badge-shape" aria-label="Badge shape" class="bg-background">
+              <SelectValue placeholder="Badge shape: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">{{ badgeShapeDefaultLabel }}</SelectItem>
+              <SelectItem value="r">Rounded</SelectItem>
+              <SelectItem value="p">Pill</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="badgeBackground">
+            <SelectTrigger id="free-badge-background" aria-label="Badge background" class="bg-background">
+              <SelectValue placeholder="Background: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">{{ badgeBackgroundDefaultLabel }}</SelectItem>
+              <SelectItem value="d">Default</SelectItem>
+              <SelectItem value="k">Dark</SelectItem>
+              <SelectItem value="t">Transparent</SelectItem>
+              <SelectItem value="n">None</SelectItem>
             </SelectContent>
           </Select>
           <Select v-if="imageType !== 'episode'" v-model="imageSource">

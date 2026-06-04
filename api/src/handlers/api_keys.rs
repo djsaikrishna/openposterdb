@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use super::auth::AuthUser;
 use super::middleware::ApiKeyUser;
 use crate::error::AppError;
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
 use crate::services::validation;
 use crate::AppState;
 
@@ -123,6 +123,14 @@ pub struct RenderSettingsResponse {
     pub episode_position: BadgePosition,
     pub episode_badge_direction: BadgeDirection,
     pub episode_blur: bool,
+    pub poster_badge_shape: BadgeShape,
+    pub logo_badge_shape: BadgeShape,
+    pub backdrop_badge_shape: BadgeShape,
+    pub episode_badge_shape: BadgeShape,
+    pub poster_badge_background: BadgeBackground,
+    pub logo_badge_background: BadgeBackground,
+    pub backdrop_badge_background: BadgeBackground,
+    pub episode_badge_background: BadgeBackground,
 }
 
 pub async fn get_settings(
@@ -168,6 +176,14 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         episode_position: settings.episode_position,
         episode_badge_direction: settings.episode_badge_direction,
         episode_blur: settings.episode_blur,
+        poster_badge_shape: settings.poster_badge_shape,
+        logo_badge_shape: settings.logo_badge_shape,
+        backdrop_badge_shape: settings.backdrop_badge_shape,
+        episode_badge_shape: settings.episode_badge_shape,
+        poster_badge_background: settings.poster_badge_background,
+        logo_badge_background: settings.logo_badge_background,
+        backdrop_badge_background: settings.backdrop_badge_background,
+        episode_badge_background: settings.episode_badge_background,
     }
 }
 
@@ -229,6 +245,22 @@ pub struct UpdateSettingsRequest {
     pub episode_badge_direction: BadgeDirection,
     #[serde(default)]
     pub episode_blur: bool,
+    #[serde(default = "db::default_badge_shape")]
+    pub poster_badge_shape: BadgeShape,
+    #[serde(default = "db::default_badge_shape")]
+    pub logo_badge_shape: BadgeShape,
+    #[serde(default = "db::default_badge_shape")]
+    pub backdrop_badge_shape: BadgeShape,
+    #[serde(default = "db::default_badge_shape")]
+    pub episode_badge_shape: BadgeShape,
+    #[serde(default = "db::default_badge_background")]
+    pub poster_badge_background: BadgeBackground,
+    #[serde(default = "db::default_badge_background")]
+    pub logo_badge_background: BadgeBackground,
+    #[serde(default = "db::default_badge_background")]
+    pub backdrop_badge_background: BadgeBackground,
+    #[serde(default = "db::default_badge_background")]
+    pub episode_badge_background: BadgeBackground,
 }
 
 fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySettings<'_> {
@@ -262,6 +294,14 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         episode_position: req.episode_position.as_str(),
         episode_badge_direction: req.episode_badge_direction.as_str(),
         episode_blur: req.episode_blur,
+        poster_badge_shape: req.poster_badge_shape.as_str(),
+        logo_badge_shape: req.logo_badge_shape.as_str(),
+        backdrop_badge_shape: req.backdrop_badge_shape.as_str(),
+        episode_badge_shape: req.episode_badge_shape.as_str(),
+        poster_badge_background: req.poster_badge_background.as_str(),
+        logo_badge_background: req.logo_badge_background.as_str(),
+        backdrop_badge_background: req.backdrop_badge_background.as_str(),
+        episode_badge_background: req.episode_badge_background.as_str(),
     }
 }
 

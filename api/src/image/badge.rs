@@ -4,10 +4,98 @@ use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 
 use crate::image::icons;
-use crate::services::db::LabelStyle;
-use crate::services::ratings::RatingBadge;
+use crate::services::db::{BadgeAppearance, BadgeBackground, BadgeShape, LabelStyle};
+use crate::services::ratings::{RatingBadge, RatingSource};
 
 const DARK_BG: Rgba<u8> = Rgba([0, 0, 0, 200]);
+/// Alpha used for the `Transparent` background so the artwork shows through.
+const TRANSPARENT_ALPHA: u8 = 120;
+/// Shadow colour drawn behind text/icons when there is no badge background.
+const SHADOW_COLOR: Rgba<u8> = Rgba([0, 0, 0, 160]);
+
+/// Return `c` with its alpha channel replaced by `a`.
+fn with_alpha(c: Rgba<u8>, a: u8) -> Rgba<u8> {
+    Rgba([c[0], c[1], c[2], a])
+}
+
+/// Background fill colours for the (label, value) sections of a badge, or
+/// `None` when the badge should have no background (drawn directly on the
+/// image). The label section is source-coloured except for `Official` labels,
+/// which always sit on a dark chip.
+fn section_colors(background: BadgeBackground, label_style: LabelStyle, source: &RatingSource) -> Option<(Rgba<u8>, Rgba<u8>)> {
+    let base_label = match label_style {
+        LabelStyle::Official => DARK_BG,
+        _ => source.color(),
+    };
+    match background {
+        BadgeBackground::Default => Some((base_label, DARK_BG)),
+        BadgeBackground::Dark => Some((DARK_BG, DARK_BG)),
+        BadgeBackground::Transparent => Some((
+            with_alpha(base_label, TRANSPARENT_ALPHA),
+            with_alpha(DARK_BG, TRANSPARENT_ALPHA),
+        )),
+        BadgeBackground::None => None,
+    }
+}
+
+/// Drop-shadow offset (px) for text/icons drawn without a background, scaled to
+/// the badge dimension. Returns `None` when the badge has a background (no
+/// shadow needed).
+fn shadow_offset(background: BadgeBackground, badge_dim: u32) -> Option<i32> {
+    if background == BadgeBackground::None {
+        Some(((badge_dim as f32 / 29.0).round() as i32).max(1))
+    } else {
+        None
+    }
+}
+
+/// Corner radius for a badge of the given short-axis length and shape.
+/// `Pill` rounds fully (radius = half the short axis); `Rounded` uses `base`.
+fn corner_radius(shape: BadgeShape, short_axis: u32, base: u32) -> u32 {
+    match shape {
+        BadgeShape::Pill => short_axis / 2,
+        BadgeShape::Rounded => base,
+    }
+}
+
+/// Build a same-size silhouette of `icon` filled with the shadow colour
+/// (RGB→black, alpha scaled down), for drawing a soft drop shadow.
+fn icon_shadow(icon: &RgbaImage) -> RgbaImage {
+    let mut shadow = icon.clone();
+    for px in shadow.pixels_mut() {
+        let a = (px.0[3] as u16 * 3 / 5) as u8;
+        *px = Rgba([0, 0, 0, a]);
+    }
+    shadow
+}
+
+/// Draw `text`, optionally preceded by a drop shadow offset by `shadow` px.
+#[allow(clippy::too_many_arguments)]
+fn draw_text_shadowed(
+    img: &mut RgbaImage,
+    color: Rgba<u8>,
+    x: i32,
+    y: i32,
+    scale: PxScale,
+    font: &FontArc,
+    text: &str,
+    shadow: Option<i32>,
+) {
+    if let Some(off) = shadow {
+        draw_text_mut(img, SHADOW_COLOR, x + off, y + off, scale, font, text);
+    }
+    draw_text_mut(img, color, x, y, scale, font, text);
+}
+
+/// Overlay `icon` at (`x`, `y`), optionally preceded by a drop shadow offset by
+/// `shadow` px (used when the badge has no background).
+fn overlay_icon_shadowed(img: &mut RgbaImage, icon: &RgbaImage, x: i64, y: i64, shadow: Option<i32>) {
+    if let Some(off) = shadow {
+        let shadow_icon = icon_shadow(icon);
+        imageops::overlay(img, &shadow_icon, x + off as i64, y + off as i64);
+    }
+    imageops::overlay(img, icon, x, y);
+}
 const BASE_BADGE_HEIGHT: u32 = 58;
 const BASE_BADGE_PADDING_H: u32 = 14;
 const BASE_TEXT_LABEL_PADDING_H: u32 = 8;
@@ -56,7 +144,12 @@ fn icon_fit_in_box(icon: &RgbaImage, box_size: u32) -> (u32, u32) {
 
 #[cfg(test)]
 pub fn render_badge(badge: &RatingBadge, font: &FontArc, label_style: LabelStyle) -> RgbaImage {
-    render_badge_with_widths(badge, font, None, None, label_style, 1.0)
+    render_badge_with_widths(badge, font, None, None, label_style, BadgeAppearance::default(), 1.0)
+}
+
+#[cfg(test)]
+pub fn render_badge_appearance(badge: &RatingBadge, font: &FontArc, label_style: LabelStyle, appearance: BadgeAppearance) -> RgbaImage {
+    render_badge_with_widths(badge, font, None, None, label_style, appearance, 1.0)
 }
 
 /// Scaled badge dimensions for a given badge_scale factor.
@@ -108,7 +201,7 @@ impl<'a> BadgeFonts<'a> {
 }
 
 /// Render all badges with uniform label and value section widths.
-pub fn render_badges_uniform(badges: &[RatingBadge], font: &FontArc, label_style: LabelStyle, badge_scale: f32) -> Vec<RgbaImage> {
+pub fn render_badges_uniform(badges: &[RatingBadge], font: &FontArc, label_style: LabelStyle, appearance: BadgeAppearance, badge_scale: f32) -> Vec<RgbaImage> {
     if badges.is_empty() {
         return vec![];
     }
@@ -141,7 +234,7 @@ pub fn render_badges_uniform(badges: &[RatingBadge], font: &FontArc, label_style
         .unwrap_or(0);
 
     badges.iter()
-        .map(|b| render_badge_inner(b, &fonts, &dims, Some(max_label_width), Some(max_value_width), label_style))
+        .map(|b| render_badge_inner(b, &fonts, &dims, Some(max_label_width), Some(max_value_width), label_style, appearance))
         .collect()
 }
 
@@ -152,11 +245,12 @@ fn render_badge_with_widths(
     uniform_label_width: Option<u32>,
     uniform_value_width: Option<u32>,
     label_style: LabelStyle,
+    appearance: BadgeAppearance,
     badge_scale: f32,
 ) -> RgbaImage {
     let fonts = BadgeFonts::new(font, badge_scale);
     let dims = ScaledDims::new(badge_scale);
-    render_badge_inner(badge, &fonts, &dims, uniform_label_width, uniform_value_width, label_style)
+    render_badge_inner(badge, &fonts, &dims, uniform_label_width, uniform_value_width, label_style, appearance)
 }
 
 fn render_badge_inner(
@@ -166,6 +260,7 @@ fn render_badge_inner(
     uniform_label_width: Option<u32>,
     uniform_value_width: Option<u32>,
     label_style: LabelStyle,
+    appearance: BadgeAppearance,
 ) -> RgbaImage {
     let use_icon = label_style.uses_icon();
 
@@ -189,30 +284,19 @@ fn render_badge_inner(
     let label_pad = if use_icon { dims.badge_padding_h } else { dims.text_label_padding_h };
     let total_width = label_width + value_width + label_pad * 2 + dims.badge_value_padding_h + dims.badge_value_padding_h / 2 + 2;
 
+    let value_x = label_width + label_pad * 2;
     let mut img = RgbaImage::new(total_width, dims.badge_height);
 
-    // Draw label background (colored, or dark for official)
-    let label_bg = match label_style {
-        LabelStyle::Official => DARK_BG,
-        _ => badge.source.color(),
-    };
-    draw_rounded_rect(&mut img, 0, 0, label_width + label_pad * 2, dims.badge_height, dims.badge_radius, label_bg);
+    // Draw the label + value backgrounds (unless the badge has no background).
+    // Both sections are filled as plain rects, then the four outer corners are
+    // rounded — leaving the inner join square for a clean seam at any radius.
+    if let Some((label_bg, value_bg)) = section_colors(appearance.background, label_style, &badge.source) {
+        draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(value_x, dims.badge_height), label_bg);
+        draw_filled_rect_mut(&mut img, Rect::at(value_x as i32, 0).of_size(total_width - value_x, dims.badge_height), value_bg);
+        round_corners(&mut img, corner_radius(appearance.shape, dims.badge_height, dims.badge_radius));
+    }
 
-    // Draw value background (dark)
-    let value_x = label_width + label_pad * 2;
-    draw_rounded_rect(&mut img, value_x, 0, total_width - value_x, dims.badge_height, dims.badge_radius, DARK_BG);
-
-    // Overdraw the inner corners to make a clean join
-    draw_filled_rect_mut(
-        &mut img,
-        Rect::at((label_width + label_pad) as i32, 0).of_size(label_pad, dims.badge_height),
-        label_bg,
-    );
-    draw_filled_rect_mut(
-        &mut img,
-        Rect::at(value_x as i32, 0).of_size(label_pad, dims.badge_height),
-        DARK_BG,
-    );
+    let shadow = shadow_offset(appearance.background, dims.badge_height);
 
     // Draw label (icon or text, centered within uniform label area)
     if use_icon {
@@ -224,12 +308,12 @@ fn render_badge_inner(
         };
         let ix = label_pad + (label_width.saturating_sub(icon_w)) / 2;
         let iy = (dims.badge_height.saturating_sub(icon_h)) / 2;
-        imageops::overlay(&mut img, &scaled_icon, ix as i64, iy as i64);
+        overlay_icon_shadowed(&mut img, &scaled_icon, ix as i64, iy as i64, shadow);
     } else {
         let actual_label_width = text_width(label, &fonts.label_scaled);
         let label_x = label_pad + (label_width.saturating_sub(actual_label_width)) / 2;
         let label_y = (dims.badge_height as i32 - fonts.label_scale.x as i32) / 2;
-        draw_text_mut(
+        draw_text_shadowed(
             &mut img,
             Rgba([255, 255, 255, 255]),
             label_x as i32,
@@ -237,6 +321,7 @@ fn render_badge_inner(
             fonts.label_scale,
             fonts.font,
             label,
+            shadow,
         );
     }
 
@@ -244,7 +329,7 @@ fn render_badge_inner(
     let actual_value_width = text_width(value, &fonts.scaled);
     let value_text_x = value_x + dims.badge_value_padding_h + (value_width.saturating_sub(actual_value_width)) / 2;
     let value_y = (dims.badge_height as i32 - fonts.scale.x as i32) / 2;
-    draw_text_mut(
+    draw_text_shadowed(
         &mut img,
         Rgba([255, 255, 255, 255]),
         value_text_x as i32,
@@ -252,6 +337,7 @@ fn render_badge_inner(
         fonts.scale,
         fonts.font,
         value,
+        shadow,
     );
 
     img
@@ -264,7 +350,7 @@ const BASE_VERT_VALUE_FONT_SIZE: f32 = 34.0;
 
 /// Render a vertical badge: source label on top, rating value below.
 /// Used for left/right poster positions.
-pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc, label_style: LabelStyle, badge_scale: f32) -> RgbaImage {
+pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc, label_style: LabelStyle, appearance: BadgeAppearance, badge_scale: f32) -> RgbaImage {
     let use_icon = label_style.uses_icon();
     let vert_label_font_size = BASE_VERT_LABEL_FONT_SIZE * badge_scale;
     let vert_value_font_size = BASE_VERT_VALUE_FONT_SIZE * badge_scale;
@@ -288,31 +374,19 @@ pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc, label_style: L
 
     let mut img = RgbaImage::new(vert_badge_width, total_height);
 
-    // Draw full background with source color (or dark for official)
-    let label_bg = match label_style {
-        LabelStyle::Official => DARK_BG,
-        _ => badge.source.color(),
-    };
-    draw_rounded_rect(&mut img, 0, 0, vert_badge_width, total_height, badge_radius, label_bg);
-
-    // Draw a dark rect for the value area (bottom half)
     let value_area_y = vert_badge_padding_v + label_area_h + (gap / 2);
-    let value_area_h = total_height - value_area_y;
-    draw_rounded_rect(
-        &mut img,
-        0,
-        value_area_y,
-        vert_badge_width,
-        value_area_h,
-        badge_radius,
-        DARK_BG,
-    );
-    // Overdraw the top corners of the dark area to clean the join
-    draw_filled_rect_mut(
-        &mut img,
-        Rect::at(0, value_area_y as i32).of_size(vert_badge_width, badge_radius.min(value_area_h)),
-        DARK_BG,
-    );
+
+    // Draw the label (top) + value (bottom) backgrounds, unless the badge has no
+    // background. Fill plain rects then round the four outer corners — a pill
+    // shape uses radius = half the width (a vertical stadium).
+    if let Some((label_bg, value_bg)) = section_colors(appearance.background, label_style, &badge.source) {
+        draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(vert_badge_width, total_height), label_bg);
+        let value_area_h = total_height - value_area_y;
+        draw_filled_rect_mut(&mut img, Rect::at(0, value_area_y as i32).of_size(vert_badge_width, value_area_h), value_bg);
+        round_corners(&mut img, corner_radius(appearance.shape, vert_badge_width, badge_radius));
+    }
+
+    let shadow = shadow_offset(appearance.background, vert_badge_width);
 
     // Center label (icon or text) within the colored label area
     if use_icon {
@@ -324,13 +398,13 @@ pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc, label_style: L
         };
         let ix = (vert_badge_width.saturating_sub(icon_w)) / 2;
         let iy = (value_area_y.saturating_sub(icon_h)) / 2;
-        imageops::overlay(&mut img, &scaled_icon, ix as i64, iy as i64);
+        overlay_icon_shadowed(&mut img, &scaled_icon, ix as i64, iy as i64, shadow);
     } else {
         let label_scaled_font = font.as_scaled(label_scale);
         let lw = text_width(label, &label_scaled_font);
         let label_x = (vert_badge_width.saturating_sub(lw)) / 2;
         let label_y = (value_area_y.saturating_sub(vert_label_font_size as u32)) / 2;
-        draw_text_mut(
+        draw_text_shadowed(
             &mut img,
             Rgba([255, 255, 255, 255]),
             label_x as i32,
@@ -338,6 +412,7 @@ pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc, label_style: L
             label_scale,
             font,
             label,
+            shadow,
         );
     }
 
@@ -346,7 +421,7 @@ pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc, label_style: L
     let vw = text_width(value, &value_scaled_font);
     let value_x = (vert_badge_width.saturating_sub(vw)) / 2;
     let value_y = (value_area_y + vert_badge_padding_v / 2) as i32;
-    draw_text_mut(
+    draw_text_shadowed(
         &mut img,
         Rgba([255, 255, 255, 255]),
         value_x as i32,
@@ -354,6 +429,7 @@ pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc, label_style: L
         value_scale,
         font,
         value,
+        shadow,
     );
 
     img
@@ -468,7 +544,7 @@ mod tests {
             source: RatingSource::Imdb,
             value: "8.5".to_string(),
         };
-        let img = render_vertical_badge(&badge, &test_font(), LabelStyle::Text, 1.0);
+        let img = render_vertical_badge(&badge, &test_font(), LabelStyle::Text, BadgeAppearance::default(), 1.0);
         assert_eq!(img.width(), BASE_VERT_BADGE_WIDTH);
         assert!(img.height() > 0);
     }
@@ -494,7 +570,7 @@ mod tests {
                 source,
                 value: "75%".to_string(),
             };
-            let img = render_vertical_badge(&badge, &font, LabelStyle::Text, 1.0);
+            let img = render_vertical_badge(&badge, &font, LabelStyle::Text, BadgeAppearance::default(), 1.0);
             assert_eq!(img.width(), BASE_VERT_BADGE_WIDTH, "wrong width for {:?}", source);
             assert!(img.height() > 0, "zero height for {:?}", source);
         }
@@ -521,7 +597,7 @@ mod tests {
                 source,
                 value: "75%".to_string(),
             };
-            let img = render_vertical_badge(&badge, &font, LabelStyle::Icon, 1.0);
+            let img = render_vertical_badge(&badge, &font, LabelStyle::Icon, BadgeAppearance::default(), 1.0);
             assert_eq!(img.width(), BASE_VERT_BADGE_WIDTH, "wrong width for {:?}", source);
             assert!(img.height() > 0, "zero height for {:?}", source);
         }
@@ -546,7 +622,7 @@ mod tests {
             source: RatingSource::Imdb,
             value: "8.5".to_string(),
         };
-        let img = render_badge_with_widths(&badge, &font, None, None, LabelStyle::Text, 2.0);
+        let img = render_badge_with_widths(&badge, &font, None, None, LabelStyle::Text, BadgeAppearance::default(), 2.0);
         assert_eq!(img.height(), BASE_BADGE_HEIGHT * 2);
     }
 
@@ -557,7 +633,7 @@ mod tests {
             source: RatingSource::Imdb,
             value: "8.5".to_string(),
         };
-        let img = render_vertical_badge(&badge, &font, LabelStyle::Text, 2.0);
+        let img = render_vertical_badge(&badge, &font, LabelStyle::Text, BadgeAppearance::default(), 2.0);
         assert_eq!(img.width(), BASE_VERT_BADGE_WIDTH * 2);
     }
 
@@ -568,7 +644,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let images = render_badges_uniform(&badges, &font, LabelStyle::Text, 2.0);
+        let images = render_badges_uniform(&badges, &font, LabelStyle::Text, BadgeAppearance::default(), 2.0);
         assert_eq!(images.len(), 2);
         // All badges should have doubled height
         for img in &images {
@@ -576,6 +652,80 @@ mod tests {
         }
         // Uniform width: all badges same width
         assert_eq!(images[0].width(), images[1].width());
+    }
+
+    const ALL_SHAPES: [BadgeShape; 2] = [BadgeShape::Rounded, BadgeShape::Pill];
+    const ALL_BACKGROUNDS: [BadgeBackground; 4] = [
+        BadgeBackground::Default,
+        BadgeBackground::Dark,
+        BadgeBackground::Transparent,
+        BadgeBackground::None,
+    ];
+
+    #[test]
+    fn all_shape_background_combos_render_valid_badges() {
+        let font = test_font();
+        let badge = RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() };
+        for shape in ALL_SHAPES {
+            for background in ALL_BACKGROUNDS {
+                let appearance = BadgeAppearance { shape, background };
+                // Horizontal: appearance must not change the badge height.
+                let h = render_badge_appearance(&badge, &font, LabelStyle::Text, appearance);
+                assert_eq!(h.height(), BASE_BADGE_HEIGHT, "h height for {shape:?}/{background:?}");
+                assert!(h.width() > 0, "h width for {shape:?}/{background:?}");
+                // Icon labels exercise the icon/shadow path.
+                let hi = render_badge_appearance(&badge, &font, LabelStyle::Official, appearance);
+                assert_eq!(hi.height(), BASE_BADGE_HEIGHT, "h-icon height for {shape:?}/{background:?}");
+                // Vertical: appearance must not change the badge width.
+                let v = render_vertical_badge(&badge, &font, LabelStyle::Text, appearance, 1.0);
+                assert_eq!(v.width(), BASE_VERT_BADGE_WIDTH, "v width for {shape:?}/{background:?}");
+                assert!(v.height() > 0, "v height for {shape:?}/{background:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn none_background_is_transparent_but_draws_content() {
+        let font = test_font();
+        let badge = RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() };
+        let none = render_badge_appearance(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Rounded, background: BadgeBackground::None });
+        // A background pixel left of the label text is fully transparent.
+        assert_eq!(none.get_pixel(2, BASE_BADGE_HEIGHT / 2)[3], 0);
+        // But the badge still draws something (the label/value text).
+        assert!(none.pixels().any(|p| p[3] > 0), "none badge should still draw text");
+    }
+
+    #[test]
+    fn background_modes_control_label_opacity() {
+        let font = test_font();
+        let badge = RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() };
+        let probe = (2, BASE_BADGE_HEIGHT / 2); // label-section background, left of text
+        let default = render_badge_appearance(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Rounded, background: BadgeBackground::Default });
+        let transparent = render_badge_appearance(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Rounded, background: BadgeBackground::Transparent });
+        // Default keeps the opaque source colour; transparent is semi-opaque.
+        assert!(default.get_pixel(probe.0, probe.1)[3] >= 200);
+        assert_eq!(transparent.get_pixel(probe.0, probe.1)[3], TRANSPARENT_ALPHA);
+    }
+
+    #[test]
+    fn pill_rounds_more_than_rounded() {
+        let font = test_font();
+        let badge = RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() };
+        let rounded = render_badge_appearance(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Rounded, background: BadgeBackground::Default });
+        let pill = render_badge_appearance(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Pill, background: BadgeBackground::Default });
+        assert!(rounded.width() > 30);
+        // A point near the top edge, beyond the small rounded radius, is filled
+        // for `rounded` but cleared by the pill's much larger corner arc.
+        assert!(rounded.get_pixel(15, 2)[3] > 0, "rounded fills near-top edge");
+        assert_eq!(pill.get_pixel(15, 2)[3], 0, "pill clears more of the top edge");
+        // Both still clear the very corner.
+        assert_eq!(rounded.get_pixel(0, 0)[3], 0);
+        assert_eq!(pill.get_pixel(0, 0)[3], 0);
     }
 
     #[test]
@@ -589,39 +739,26 @@ mod tests {
     }
 }
 
-fn draw_rounded_rect(img: &mut RgbaImage, x: u32, y: u32, w: u32, h: u32, r: u32, color: Rgba<u8>) {
-    // Simple approach: draw a filled rect and round corners by drawing circles
-    // For simplicity, just draw the filled rect — true rounded rects need more complex logic
-    draw_filled_rect_mut(
-        img,
-        Rect::at(x as i32, y as i32).of_size(w, h),
-        color,
-    );
-
-    // Clear corners to simulate rounding (set to transparent)
+/// Round the four outer corners of the full image to radius `r` by clearing
+/// pixels outside each corner arc to transparent. `r` is clamped so the arcs
+/// never overlap, so passing `r` = half the short axis yields a pill / stadium
+/// shape. The badge image spans exactly one badge, so its corners are the
+/// badge's outer corners — any inner seam between label and value stays square.
+fn round_corners(img: &mut RgbaImage, r: u32) {
+    let (w, h) = (img.width(), img.height());
+    let r = r.min(w / 2).min(h / 2);
+    if r == 0 {
+        return;
+    }
     let transparent = Rgba([0, 0, 0, 0]);
     for dy in 0..r {
         for dx in 0..r {
             let dist_sq = (r - dx) * (r - dx) + (r - dy) * (r - dy);
             if dist_sq > r * r {
-                // Top-left
-                if x + dx < img.width() && y + dy < img.height() {
-                    img.put_pixel(x + dx, y + dy, transparent);
-                }
-                // Top-right
-                let rx = x + w - 1 - dx;
-                if rx < img.width() && y + dy < img.height() {
-                    img.put_pixel(rx, y + dy, transparent);
-                }
-                // Bottom-left
-                let by = y + h - 1 - dy;
-                if x + dx < img.width() && by < img.height() {
-                    img.put_pixel(x + dx, by, transparent);
-                }
-                // Bottom-right
-                if rx < img.width() && by < img.height() {
-                    img.put_pixel(rx, by, transparent);
-                }
+                img.put_pixel(dx, dy, transparent); // top-left
+                img.put_pixel(w - 1 - dx, dy, transparent); // top-right
+                img.put_pixel(dx, h - 1 - dy, transparent); // bottom-left
+                img.put_pixel(w - 1 - dx, h - 1 - dy, transparent); // bottom-right
             }
         }
     }

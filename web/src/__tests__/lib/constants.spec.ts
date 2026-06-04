@@ -8,6 +8,8 @@ import {
   BADGE_DIRECTION_LABELS,
   LABEL_STYLE_LABELS,
   BADGE_SIZE_LABELS,
+  BADGE_SHAPE_LABELS,
+  BADGE_BACKGROUND_LABELS,
   IMAGE_SOURCE_LABELS,
   POSITION_LABELS,
 } from '@/lib/constants'
@@ -112,6 +114,14 @@ describe('enum code → label maps', () => {
   it('badge size maps every xs–xl code', () => {
     expect(Object.keys(BADGE_SIZE_LABELS).sort()).toEqual(['l', 'm', 's', 'xl', 'xs'])
     expect(BADGE_SIZE_LABELS.m).toBe('Medium')
+  })
+
+  it('badge shape maps the r/p codes', () => {
+    expect(BADGE_SHAPE_LABELS).toEqual({ r: 'Rounded', p: 'Pill' })
+  })
+
+  it('badge background maps the d/k/t/n codes', () => {
+    expect(BADGE_BACKGROUND_LABELS).toEqual({ d: 'Default', k: 'Dark', t: 'Transparent', n: 'None' })
   })
 
   it('image source maps the t/f codes', () => {

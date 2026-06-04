@@ -35,6 +35,14 @@ fn test_upsert(key_id: i32) -> UpsertApiKeySettings<'static> {
         episode_badge_direction: "v",
         episode_blur: false,
         ratings_exclude: "",
+        poster_badge_shape: "r",
+        logo_badge_shape: "r",
+        backdrop_badge_shape: "r",
+        episode_badge_shape: "r",
+        poster_badge_background: "d",
+        logo_badge_background: "d",
+        backdrop_badge_background: "d",
+        episode_badge_background: "d",
     }
 }
 

@@ -10,7 +10,7 @@ use crate::error::AppError;
 use crate::handlers::image::ImageQuery;
 use crate::image::generate;
 use crate::image::serve;
-use crate::services::db::{self, BadgeDirection, BadgeStyle, BadgePosition, RenderSettings};
+use crate::services::db::{self, BadgeAppearance, BadgeDirection, BadgeStyle, BadgePosition, RenderSettings};
 #[cfg(test)]
 use crate::services::db::{BadgeSize, LabelStyle};
 use crate::services::ratings::{self, RatingBadge, RatingSource};
@@ -97,6 +97,7 @@ const PREVIEW_LOGO_BACKDROP_RATINGS_LIMIT: i32 = 5;
 /// the rest use defaults. This allows preview handlers to delegate cache key
 /// construction to `serve::settings_cache_suffix_with_ratings`, keeping cache
 /// key format in sync with the main image-serving path.
+#[allow(clippy::too_many_arguments)]
 fn preview_render_settings(
     kind: cache::ImageType,
     badge_style: BadgeStyle,
@@ -104,6 +105,7 @@ fn preview_render_settings(
     badge_size: db::BadgeSize,
     position: BadgePosition,
     badge_direction: BadgeDirection,
+    appearance: BadgeAppearance,
     ratings_limit: i32,
     ratings_order: &str,
     ratings_exclude: &str,
@@ -119,12 +121,16 @@ fn preview_render_settings(
             s.poster_badge_size = badge_size;
             s.poster_position = position;
             s.poster_badge_direction = badge_direction;
+            s.poster_badge_shape = appearance.shape;
+            s.poster_badge_background = appearance.background;
         }
         cache::ImageType::Logo => {
             s.logo_ratings_limit = ratings_limit;
             s.logo_badge_style = badge_style;
             s.logo_label_style = label_style;
             s.logo_badge_size = badge_size;
+            s.logo_badge_shape = appearance.shape;
+            s.logo_badge_background = appearance.background;
         }
         cache::ImageType::Backdrop => {
             s.backdrop_ratings_limit = ratings_limit;
@@ -133,6 +139,8 @@ fn preview_render_settings(
             s.backdrop_badge_size = badge_size;
             s.backdrop_position = position;
             s.backdrop_badge_direction = badge_direction;
+            s.backdrop_badge_shape = appearance.shape;
+            s.backdrop_badge_background = appearance.background;
         }
         cache::ImageType::Episode => {
             s.episode_ratings_limit = ratings_limit;
@@ -141,9 +149,20 @@ fn preview_render_settings(
             s.episode_badge_size = badge_size;
             s.episode_position = position;
             s.episode_badge_direction = badge_direction;
+            s.episode_badge_shape = appearance.shape;
+            s.episode_badge_background = appearance.background;
         }
     }
     s
+}
+
+/// Build the badge appearance (shape + background) from preview query params,
+/// falling back to the server defaults.
+fn preview_badge_appearance(query: &ImageQuery) -> BadgeAppearance {
+    BadgeAppearance {
+        shape: query.badge_shape.unwrap_or_else(db::default_badge_shape),
+        background: query.badge_background.unwrap_or_else(db::default_badge_background),
+    }
 }
 
 /// Parse and validate the optional `imageSize` query parameter for previews.
@@ -179,8 +198,9 @@ pub async fn preview_poster(
     let label_style = query.label_style.unwrap_or(db::default_label_style());
     let badge_direction = query.badge_direction.unwrap_or(db::default_poster_badge_direction()).resolve(position);
     let badge_style = raw_badge_style.resolve(badge_direction);
+    let badge_appearance = preview_badge_appearance(&query);
     let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
-    let preview_settings = preview_render_settings(cache::ImageType::Poster, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order, ratings_exclude);
+    let preview_settings = preview_render_settings(cache::ImageType::Poster, badge_style, label_style, badge_size, position, badge_direction, badge_appearance, ratings_limit, ratings_order, ratings_exclude);
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Poster, image_size, &ratings_suffix);
     let cache_key = format!("preview:{suffix}");
     let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Poster, &suffix, "jpg")?;
@@ -205,7 +225,7 @@ pub async fn preview_poster(
     let font = state.font.clone();
     let quality = state.config.image_quality;
     let buf = tokio::task::spawn_blocking(move || {
-        generate::render_poster_sync(poster_png, &badges, &font, quality, position, badge_style, label_style, badge_direction, target_width, badge_scale, badge_size)
+        generate::render_poster_sync(poster_png, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -236,8 +256,9 @@ pub async fn preview_logo(
     db::validate_ratings_exclude(ratings_exclude)?;
     let badge_style = query.badge_style.unwrap_or(BadgeStyle::Horizontal).resolve(BadgeDirection::Vertical);
     let label_style = query.label_style.unwrap_or(db::default_label_style());
+    let badge_appearance = preview_badge_appearance(&query);
     let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
-    let preview_settings = preview_render_settings(cache::ImageType::Logo, badge_style, label_style, badge_size, BadgePosition::BottomCenter, BadgeDirection::Horizontal, ratings_limit, ratings_order, ratings_exclude);
+    let preview_settings = preview_render_settings(cache::ImageType::Logo, badge_style, label_style, badge_size, BadgePosition::BottomCenter, BadgeDirection::Horizontal, badge_appearance, ratings_limit, ratings_order, ratings_exclude);
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Logo, image_size, &ratings_suffix);
     let cache_key = format!("preview-logo:{suffix}");
     let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Logo, &suffix, "png")?;
@@ -259,7 +280,7 @@ pub async fn preview_logo(
     let font = state.font.clone();
 
     let buf = tokio::task::spawn_blocking(move || {
-        generate::render_logo_sync(logo_png, &badges, &font, badge_style, label_style, target_width, badge_scale)
+        generate::render_logo_sync(logo_png, &badges, &font, badge_style, label_style, badge_appearance, target_width, badge_scale)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -292,8 +313,9 @@ pub async fn preview_backdrop(
     let badge_direction = query.badge_direction.unwrap_or(db::default_backdrop_badge_direction()).resolve(position);
     let badge_style = query.badge_style.unwrap_or(BadgeStyle::Vertical).resolve(badge_direction);
     let label_style = query.label_style.unwrap_or(db::default_label_style());
+    let badge_appearance = preview_badge_appearance(&query);
     let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
-    let preview_settings = preview_render_settings(cache::ImageType::Backdrop, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order, ratings_exclude);
+    let preview_settings = preview_render_settings(cache::ImageType::Backdrop, badge_style, label_style, badge_size, position, badge_direction, badge_appearance, ratings_limit, ratings_order, ratings_exclude);
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Backdrop, image_size, &ratings_suffix);
     let cache_key = format!("preview-backdrop:{suffix}");
     let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Backdrop, &suffix, "jpg")?;
@@ -316,7 +338,7 @@ pub async fn preview_backdrop(
     let quality = state.config.image_quality;
 
     let buf = tokio::task::spawn_blocking(move || {
-        generate::render_backdrop_sync(backdrop_png, &badges, &font, quality, position, badge_style, label_style, badge_direction, target_width, badge_scale, badge_size)
+        generate::render_backdrop_sync(backdrop_png, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -370,9 +392,10 @@ pub async fn preview_episode(
     let badge_direction = query.badge_direction.unwrap_or(db::default_episode_badge_direction()).resolve(position);
     let badge_style = query.badge_style.unwrap_or(db::default_episode_badge_style()).resolve(badge_direction);
     let label_style = query.label_style.unwrap_or(db::default_label_style());
+    let badge_appearance = preview_badge_appearance(&query);
     let blur = query.blur.unwrap_or(false);
     let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
-    let mut preview_settings = preview_render_settings(cache::ImageType::Episode, badge_style, label_style, badge_size, position, badge_direction, ratings_limit, ratings_order, ratings_exclude);
+    let mut preview_settings = preview_render_settings(cache::ImageType::Episode, badge_style, label_style, badge_size, position, badge_direction, badge_appearance, ratings_limit, ratings_order, ratings_exclude);
     preview_settings.episode_blur = blur;
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Episode, image_size, &ratings_suffix);
     let cache_key = format!("preview-episode:{suffix}");
@@ -396,7 +419,7 @@ pub async fn preview_episode(
     let quality = state.config.image_quality;
 
     let buf = tokio::task::spawn_blocking(move || {
-        generate::render_episode_sync(episode_png, &badges, &font, quality, position, badge_style, label_style, badge_direction, target_width, badge_scale, badge_size, blur)
+        generate::render_episode_sync(episode_png, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, blur)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -464,7 +487,7 @@ mod tests {
     fn sample_poster_renders_with_badges() {
         let font = ab_glyph::FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let badges = sample_badges();
-        let result = generate::render_poster_sync(&SAMPLE_POSTER_PNG, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium);
+        let result = generate::render_poster_sync(&SAMPLE_POSTER_PNG, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium);
         let buf = result.expect("rendering should succeed");
         // Valid JPEG
         assert_eq!(buf[0], 0xFF);
@@ -475,7 +498,7 @@ mod tests {
     #[test]
     fn sample_poster_renders_with_no_badges() {
         let font = ab_glyph::FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = generate::render_poster_sync(&SAMPLE_POSTER_PNG, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium);
+        let result = generate::render_poster_sync(&SAMPLE_POSTER_PNG, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium);
         let buf = result.expect("rendering should succeed");
         assert_eq!(buf[0], 0xFF);
         assert_eq!(buf[1], 0xD8);

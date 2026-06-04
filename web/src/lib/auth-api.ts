@@ -34,6 +34,14 @@ export interface FreeKeyDefaults {
   episode_position: string
   episode_badge_direction: string
   episode_blur: boolean
+  poster_badge_shape: string
+  logo_badge_shape: string
+  backdrop_badge_shape: string
+  episode_badge_shape: string
+  poster_badge_background: string
+  logo_badge_background: string
+  backdrop_badge_background: string
+  episode_badge_background: string
 }
 
 export const authApi = {

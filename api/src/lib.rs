@@ -346,4 +346,36 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN ratings_exclude TEXT NOT NULL DEFAULT ''",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN poster_badge_shape TEXT NOT NULL DEFAULT 'r'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN logo_badge_shape TEXT NOT NULL DEFAULT 'r'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_badge_shape TEXT NOT NULL DEFAULT 'r'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_badge_shape TEXT NOT NULL DEFAULT 'r'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN poster_badge_background TEXT NOT NULL DEFAULT 'd'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN logo_badge_background TEXT NOT NULL DEFAULT 'd'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_badge_background TEXT NOT NULL DEFAULT 'd'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_badge_background TEXT NOT NULL DEFAULT 'd'",
+        "duplicate column",
+    ),
 ];
