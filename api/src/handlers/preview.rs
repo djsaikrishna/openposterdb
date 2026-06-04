@@ -84,6 +84,8 @@ fn sample_badges() -> Vec<RatingBadge> {
         RatingBadge { source: RatingSource::Trakt, value: "100%".into() },
         RatingBadge { source: RatingSource::Letterboxd, value: "5.0".into() },
         RatingBadge { source: RatingSource::Mal, value: "10.00".into() },
+        RatingBadge { source: RatingSource::Mdblist, value: "100".into() },
+        RatingBadge { source: RatingSource::Ebert, value: "4.0".into() },
     ]
 }
 
@@ -445,19 +447,17 @@ mod tests {
     }
 
     #[test]
-    fn sample_badges_returns_all_8_sources() {
+    fn sample_badges_returns_all_sources() {
         let badges = sample_badges();
-        assert_eq!(badges.len(), 8);
+        // Every selectable rating source must have a sample badge, or it can
+        // never appear in the settings preview regardless of order/limit.
+        assert_eq!(badges.len(), RatingSource::all_keys().len());
 
-        let sources: Vec<_> = badges.iter().map(|b| &b.source).collect();
-        assert!(sources.contains(&&RatingSource::Imdb));
-        assert!(sources.contains(&&RatingSource::Tmdb));
-        assert!(sources.contains(&&RatingSource::Rt));
-        assert!(sources.contains(&&RatingSource::RtAudience));
-        assert!(sources.contains(&&RatingSource::Metacritic));
-        assert!(sources.contains(&&RatingSource::Trakt));
-        assert!(sources.contains(&&RatingSource::Letterboxd));
-        assert!(sources.contains(&&RatingSource::Mal));
+        let sources: Vec<_> = badges.iter().map(|b| b.source).collect();
+        for key in RatingSource::all_keys() {
+            let src = RatingSource::from_key(key).unwrap();
+            assert!(sources.contains(&src), "sample_badges missing {key}");
+        }
     }
 
     #[test]

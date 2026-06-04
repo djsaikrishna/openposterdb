@@ -11,6 +11,8 @@ static MC_BYTES: &[u8] = include_bytes!("../../assets/icons/mc.png");
 static TRAKT_BYTES: &[u8] = include_bytes!("../../assets/icons/trakt.png");
 static LB_BYTES: &[u8] = include_bytes!("../../assets/icons/lb.png");
 static MAL_BYTES: &[u8] = include_bytes!("../../assets/icons/mal.png");
+static MDBLIST_BYTES: &[u8] = include_bytes!("../../assets/icons/mdblist.png");
+static EBERT_BYTES: &[u8] = include_bytes!("../../assets/icons/ebert.png");
 
 // Official icons
 static OFF_IMDB_BYTES: &[u8] = include_bytes!("../../assets/icons/official/imdb.png");
@@ -19,6 +21,8 @@ static OFF_MC_BYTES: &[u8] = include_bytes!("../../assets/icons/official/metacri
 static OFF_TRAKT_BYTES: &[u8] = include_bytes!("../../assets/icons/official/trakt.png");
 static OFF_LB_BYTES: &[u8] = include_bytes!("../../assets/icons/official/letterboxd.png");
 static OFF_MAL_BYTES: &[u8] = include_bytes!("../../assets/icons/official/mal.webp");
+static OFF_MDBLIST_BYTES: &[u8] = include_bytes!("../../assets/icons/official/mdblist.png");
+static OFF_EBERT_BYTES: &[u8] = include_bytes!("../../assets/icons/official/ebert.png");
 static OFF_RT_CRITIC_POSITIVE_BYTES: &[u8] = include_bytes!("../../assets/icons/official/Rotten_Tomatoes_critic_positive.png");
 static OFF_RT_CRITIC_ROTTEN_BYTES: &[u8] = include_bytes!("../../assets/icons/official/Rotten_Tomatoes_critic_rotten.png");
 static OFF_RT_CRITIC_CERTIFIED_FRESH_BYTES: &[u8] = include_bytes!("../../assets/icons/official/Rotten_Tomatoes_critic_certified_fresh.png");
@@ -40,6 +44,8 @@ static MC_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(MC_BYTES));
 static TRAKT_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(TRAKT_BYTES));
 static LB_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(LB_BYTES));
 static MAL_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(MAL_BYTES));
+static MDBLIST_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(MDBLIST_BYTES));
+static EBERT_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(EBERT_BYTES));
 
 // Official icon images
 static OFF_IMDB_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_IMDB_BYTES));
@@ -48,6 +54,8 @@ static OFF_MC_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_MC_BYTES));
 static OFF_TRAKT_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_TRAKT_BYTES));
 static OFF_LB_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_LB_BYTES));
 static OFF_MAL_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_MAL_BYTES));
+static OFF_MDBLIST_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_MDBLIST_BYTES));
+static OFF_EBERT_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_EBERT_BYTES));
 static OFF_RT_CRITIC_POSITIVE_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_RT_CRITIC_POSITIVE_BYTES));
 static OFF_RT_CRITIC_ROTTEN_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_RT_CRITIC_ROTTEN_BYTES));
 static OFF_RT_CRITIC_CERTIFIED_FRESH_IMG: LazyLock<RgbaImage> = LazyLock::new(|| decode(OFF_RT_CRITIC_CERTIFIED_FRESH_BYTES));
@@ -65,6 +73,8 @@ pub fn icon_for_source(source: &RatingSource) -> &'static RgbaImage {
         RatingSource::Trakt => &TRAKT_IMG,
         RatingSource::Letterboxd => &LB_IMG,
         RatingSource::Mal => &MAL_IMG,
+        RatingSource::Mdblist => &MDBLIST_IMG,
+        RatingSource::Ebert => &EBERT_IMG,
     }
 }
 
@@ -84,6 +94,8 @@ pub fn official_icon_for_badge(badge: &RatingBadge) -> &'static RgbaImage {
         RatingSource::Trakt => &OFF_TRAKT_IMG,
         RatingSource::Letterboxd => &OFF_LB_IMG,
         RatingSource::Mal => &OFF_MAL_IMG,
+        RatingSource::Mdblist => &OFF_MDBLIST_IMG,
+        RatingSource::Ebert => &OFF_EBERT_IMG,
         RatingSource::Rt => {
             let score = parse_percent(&badge.value).unwrap_or(0);
             if score >= 75 {
@@ -122,6 +134,8 @@ mod tests {
             RatingSource::Trakt,
             RatingSource::Letterboxd,
             RatingSource::Mal,
+            RatingSource::Mdblist,
+            RatingSource::Ebert,
         ];
         for source in sources {
             let img = icon_for_source(&source);
@@ -139,6 +153,8 @@ mod tests {
             RatingBadge { source: RatingSource::Trakt, value: "90%".into() },
             RatingBadge { source: RatingSource::Letterboxd, value: "4.0".into() },
             RatingBadge { source: RatingSource::Mal, value: "8.5".into() },
+            RatingBadge { source: RatingSource::Mdblist, value: "89".into() },
+            RatingBadge { source: RatingSource::Ebert, value: "3.5".into() },
             // RT critics — all three variants
             RatingBadge { source: RatingSource::Rt, value: "95%".into() },
             RatingBadge { source: RatingSource::Rt, value: "65%".into() },

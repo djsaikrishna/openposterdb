@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::id::{MediaType, ResolvedId};
-use crate::services::mdblist::MdblistClient;
+use crate::services::mdblist::{MdblistClient, MdblistResponse};
 use crate::services::omdb::OmdbClient;
 use crate::services::tmdb::TmdbClient;
 use crate::services::trakt::TraktClient;
@@ -20,6 +20,8 @@ pub enum RatingSource {
     Trakt,
     Letterboxd,
     Mal,
+    Mdblist,
+    Ebert,
 }
 
 impl RatingSource {
@@ -33,6 +35,8 @@ impl RatingSource {
             Self::Trakt => "Trakt",
             Self::Letterboxd => "LB",
             Self::Mal => "MAL",
+            Self::Mdblist => "MDB",
+            Self::Ebert => "Ebert",
         }
     }
 
@@ -47,6 +51,8 @@ impl RatingSource {
             Self::Metacritic => 'c',
             Self::Tmdb => 't',
             Self::Trakt => 'k',
+            Self::Mdblist => 'd',
+            Self::Ebert => 'e',
         }
     }
 
@@ -61,6 +67,8 @@ impl RatingSource {
             'c' => Some(Self::Metacritic),
             't' => Some(Self::Tmdb),
             'k' => Some(Self::Trakt),
+            'd' => Some(Self::Mdblist),
+            'e' => Some(Self::Ebert),
             _ => None,
         }
     }
@@ -75,6 +83,8 @@ impl RatingSource {
             Self::Trakt => "trakt",
             Self::Letterboxd => "lb",
             Self::Mal => "mal",
+            Self::Mdblist => "mdblist",
+            Self::Ebert => "ebert",
         }
     }
 
@@ -88,12 +98,14 @@ impl RatingSource {
             "trakt" => Some(Self::Trakt),
             "lb" => Some(Self::Letterboxd),
             "mal" => Some(Self::Mal),
+            "mdblist" => Some(Self::Mdblist),
+            "ebert" => Some(Self::Ebert),
             _ => None,
         }
     }
 
     pub fn all_keys() -> Vec<&'static str> {
-        vec!["imdb", "tmdb", "rt", "rta", "mc", "trakt", "lb", "mal"]
+        vec!["imdb", "tmdb", "rt", "rta", "mc", "trakt", "lb", "mal", "mdblist", "ebert"]
     }
 
     pub fn color(&self) -> Rgba<u8> {
@@ -106,6 +118,8 @@ impl RatingSource {
             Self::Trakt => Rgba([175, 15, 45, 255]),       // trakt red
             Self::Letterboxd => Rgba([0, 155, 88, 255]),   // letterboxd green
             Self::Mal => Rgba([34, 60, 120, 255]),         // MAL blue
+            Self::Mdblist => Rgba([66, 132, 202, 255]),    // mdblist blue (#4284CA)
+            Self::Ebert => Rgba([232, 89, 12, 255]),       // Roger Ebert orange
         }
     }
 }
@@ -235,8 +249,9 @@ async fn fetch_ratings_inner(
             .cloned()
     };
 
-    // Badge order: IMDb, TMDB, RT, RT Audience, MC, Trakt, Letterboxd, MAL
-    // MDBList preferred for overlapping sources; OMDb and direct Trakt fill gaps
+    // Badge order: IMDb, TMDB, RT, RT Audience, MC, Trakt, Letterboxd, MAL, MDBList, Ebert
+    // MDBList preferred for overlapping sources; OMDb and direct Trakt fill gaps.
+    // MDBList's own aggregate score and Roger Ebert come only from MDBList.
     let ordered: Vec<Option<RatingBadge>> = vec![
         find_mdb(RatingSource::Imdb).or_else(|| find_omdb(RatingSource::Imdb)),
         tmdb_badges,
@@ -246,6 +261,8 @@ async fn fetch_ratings_inner(
         find_mdb(RatingSource::Trakt).or(trakt_badge),
         find_mdb(RatingSource::Letterboxd),
         find_mdb(RatingSource::Mal),
+        find_mdb(RatingSource::Mdblist),
+        find_mdb(RatingSource::Ebert),
     ];
 
     RatingsResult {
@@ -453,7 +470,7 @@ pub fn exclude_cache_token(exclude: &str) -> String {
 }
 
 /// Canonical order of all rating sources, used for deterministic cache keys.
-const CANONICAL_ORDER: &[&str] = &["mal", "imdb", "lb", "rt", "rta", "mc", "tmdb", "trakt"];
+const CANONICAL_ORDER: &[&str] = &["mal", "imdb", "lb", "rt", "rta", "mc", "tmdb", "trakt", "mdblist", "ebert"];
 
 /// Parse a comma-separated order string into a vec of known `RatingSource`s.
 fn parse_order(order: &str) -> Vec<RatingSource> {
@@ -602,6 +619,8 @@ mod tests {
         assert_eq!(RatingSource::Trakt.label(), "Trakt");
         assert_eq!(RatingSource::Letterboxd.label(), "LB");
         assert_eq!(RatingSource::Mal.label(), "MAL");
+        assert_eq!(RatingSource::Mdblist.label(), "MDB");
+        assert_eq!(RatingSource::Ebert.label(), "Ebert");
     }
 
     #[test]
@@ -613,6 +632,8 @@ mod tests {
         assert_eq!(RatingSource::Trakt.color(), Rgba([175, 15, 45, 255]));
         assert_eq!(RatingSource::Letterboxd.color(), Rgba([0, 155, 88, 255]));
         assert_eq!(RatingSource::Mal.color(), Rgba([34, 60, 120, 255]));
+        assert_eq!(RatingSource::Mdblist.color(), Rgba([66, 132, 202, 255]));
+        assert_eq!(RatingSource::Ebert.color(), Rgba([232, 89, 12, 255]));
     }
 
     #[test]
@@ -626,6 +647,8 @@ mod tests {
             RatingSource::Trakt,
             RatingSource::Letterboxd,
             RatingSource::Mal,
+            RatingSource::Mdblist,
+            RatingSource::Ebert,
         ];
         for src in sources {
             assert_eq!(RatingSource::from_key(src.key()), Some(src));
@@ -780,6 +803,8 @@ mod tests {
             (RatingSource::Metacritic, 'c'),
             (RatingSource::Tmdb, 't'),
             (RatingSource::Trakt, 'k'),
+            (RatingSource::Mdblist, 'd'),
+            (RatingSource::Ebert, 'e'),
         ];
         for (src, expected) in &sources {
             assert_eq!(src.cache_char(), *expected, "cache_char mismatch for {:?}", src);
@@ -809,6 +834,21 @@ mod tests {
         // Only two sources specified — missing ones appended in canonical order
         let suffix = ratings_cache_suffix("imdb,rt", "", 8);
         assert_eq!(suffix, "@irmlactk");
+    }
+
+    #[test]
+    fn ratings_cache_suffix_includes_all_ten_sources() {
+        // With limit 10 every source — including mdblist (d) and ebert (e) — fits.
+        // Order: imdb,rt then canonical-appended mal,lb,rta,mc,tmdb,trakt,mdblist,ebert.
+        let suffix = ratings_cache_suffix("imdb,rt", "", 10);
+        assert_eq!(suffix, "@irmlactkde");
+    }
+
+    #[test]
+    fn ratings_cache_suffix_mdblist_and_ebert_ordering() {
+        // New sources are addressable by key and ordered like any other.
+        let suffix = ratings_cache_suffix("mdblist,ebert,imdb", "", 3);
+        assert_eq!(suffix, "@dei");
     }
 
     #[test]
@@ -858,7 +898,7 @@ mod tests {
         for src in [
             RatingSource::Mal, RatingSource::Imdb, RatingSource::Letterboxd,
             RatingSource::Rt, RatingSource::RtAudience, RatingSource::Metacritic,
-            RatingSource::Tmdb, RatingSource::Trakt,
+            RatingSource::Tmdb, RatingSource::Trakt, RatingSource::Mdblist, RatingSource::Ebert,
         ] {
             assert_eq!(RatingSource::from_cache_char(src.cache_char()), Some(src));
         }
@@ -883,6 +923,38 @@ mod tests {
         // SQLite fast path: badges_suffix_from_available
         let actual = badges_suffix_from_available(&available, "imdb,rt,tmdb", "", 3);
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn badges_suffix_from_available_matches_pipeline_with_new_sources() {
+        // Cache invariant for the two new sources (mdblist 'd', ebert 'e'):
+        // the SQLite fast-path suffix must equal the full-pipeline suffix.
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
+            RatingBadge { source: RatingSource::Mdblist, value: "89".into() },
+            RatingBadge { source: RatingSource::Ebert, value: "3.5".into() },
+        ];
+        let available = available_sources_string(&badges);
+        // Canonical order places imdb(i) before mdblist(d) before ebert(e).
+        assert_eq!(available, "ide");
+
+        let order = "ebert,mdblist,imdb";
+        let filtered = apply_rating_preferences(badges, order, "", 3);
+        let expected = badges_cache_suffix(&filtered);
+        let from_available = badges_suffix_from_available(&available, order, "", 3);
+        assert_eq!(from_available, expected);
+        assert_eq!(expected, "@edi");
+    }
+
+    #[test]
+    fn available_sources_string_includes_new_sources_in_canonical_order() {
+        let badges = vec![
+            RatingBadge { source: RatingSource::Ebert, value: "3.5".into() },
+            RatingBadge { source: RatingSource::Mdblist, value: "89".into() },
+            RatingBadge { source: RatingSource::Mal, value: "8.50".into() },
+        ];
+        // Canonical: mal(m) ... mdblist(d) ... ebert(e)
+        assert_eq!(available_sources_string(&badges), "mde");
     }
 
     #[test]
@@ -926,6 +998,63 @@ mod tests {
         assert_ne!(RatingSource::Imdb, RatingSource::Tmdb);
     }
 
+    #[test]
+    fn mdblist_badges_parses_score_int_and_rogerebert() {
+        // Representative shape from the live MDBList API: top-level `score` is an
+        // integer (89), rogerebert exposes only `value` (score/votes null), and
+        // RT audience arrives as "popcorn".
+        let json = r#"{
+            "score": 89,
+            "ids": { "imdb": "tt0111161", "tmdb": 278 },
+            "ratings": [
+                { "source": "imdb", "value": 9.3, "score": 93, "votes": 3000000 },
+                { "source": "popcorn", "value": 98, "score": 98, "votes": 53000 },
+                { "source": "rogerebert", "value": 3.5, "score": null, "votes": null }
+            ]
+        }"#;
+        let resp: MdblistResponse = serde_json::from_str(json).expect("valid mdblist response");
+        // Int `score` must deserialize into the Option<f64> field, not fail the
+        // whole response (which would silently drop every MDBList rating).
+        assert_eq!(resp.score, Some(89.0));
+
+        let badges = mdblist_badges(&resp);
+        let find = |s: RatingSource| badges.iter().find(|b| b.source == s).map(|b| b.value.as_str());
+        assert_eq!(find(RatingSource::Imdb), Some("9.3"));
+        assert_eq!(find(RatingSource::RtAudience), Some("98%"));
+        assert_eq!(find(RatingSource::Ebert), Some("3.5"), "rogerebert value rendered as bare stars");
+        assert_eq!(find(RatingSource::Mdblist), Some("89"), "top-level score rendered as a bare integer");
+    }
+
+    #[test]
+    fn mdblist_badges_suppresses_missing_and_zero() {
+        // score null -> no MDBList badge; rogerebert value 0 -> dropped;
+        // an unmapped source ("metacriticuser") is ignored entirely.
+        let json = r#"{
+            "score": null,
+            "ids": {},
+            "ratings": [
+                { "source": "rogerebert", "value": 0, "score": null, "votes": null },
+                { "source": "metacriticuser", "value": 9.0, "score": 90, "votes": 10 }
+            ]
+        }"#;
+        let resp: MdblistResponse = serde_json::from_str(json).expect("valid mdblist response");
+        assert_eq!(resp.score, None);
+        let badges = mdblist_badges(&resp);
+        assert!(badges.iter().all(|b| b.source != RatingSource::Mdblist), "null score yields no MDBList badge");
+        assert!(badges.iter().all(|b| b.source != RatingSource::Ebert), "0-star Ebert is suppressed");
+        assert!(badges.is_empty(), "no mapped sources present");
+    }
+
+    #[test]
+    fn mdblist_badges_absent_score_field_omits_mdblist() {
+        // A response missing `score` entirely (serde default) must not panic and
+        // must not emit an MDBList badge.
+        let json = r#"{ "ids": {}, "ratings": [] }"#;
+        let resp: MdblistResponse = serde_json::from_str(json).expect("valid mdblist response");
+        assert_eq!(resp.score, None);
+        assert!(mdblist_badges(&resp).is_empty());
+    }
+
 }
 
 async fn fetch_mdblist_ratings(
@@ -947,6 +1076,14 @@ async fn fetch_mdblist_ratings(
         }
     };
 
+    Some((mdblist_badges(&resp), resp.ids.tmdb, resp.ids.tvdb, resp.ids.imdb))
+}
+
+/// Map a raw MDBList response into rating badges.
+///
+/// Pure (no I/O) so the source→badge mapping, value formatting, and `<= 0`
+/// suppression can be unit-tested directly without an HTTP client.
+fn mdblist_badges(resp: &MdblistResponse) -> Vec<RatingBadge> {
     let mut badges = Vec::new();
 
     for r in &resp.ratings {
@@ -979,6 +1116,13 @@ async fn fetch_mdblist_ratings(
                 source: RatingSource::Mal,
                 value: format!("{:.2}", s / 10.0),
             }),
+            // Roger Ebert's classic 0–4 star rating (issue #35). MDBList exposes
+            // only `value` for this source (`score`/`votes` are null), so render
+            // the bare star value, matching the IMDb/Letterboxd decimal style.
+            "rogerebert" => r.value.filter(|v| *v > 0.0).map(|v| RatingBadge {
+                source: RatingSource::Ebert,
+                value: format!("{v:.1}"),
+            }),
             _ => None,
         };
 
@@ -987,5 +1131,15 @@ async fn fetch_mdblist_ratings(
         }
     }
 
-    Some((badges, resp.ids.tmdb, resp.ids.tvdb, resp.ids.imdb))
+    // MDBList's own aggregated score (issue #42) is a 0–100 meta-score returned
+    // at the top level of the response, not inside the `ratings` array. Render it
+    // as a bare integer to match MDBList's own presentation (and Metacritic).
+    if let Some(score) = resp.score.filter(|s| *s > 0.0) {
+        badges.push(RatingBadge {
+            source: RatingSource::Mdblist,
+            value: format!("{score:.0}"),
+        });
+    }
+
+    badges
 }

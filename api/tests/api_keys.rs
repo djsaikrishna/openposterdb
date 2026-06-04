@@ -221,7 +221,7 @@ async fn get_key_settings_returns_defaults() {
     assert_eq!(json["textless"], false);
     assert_eq!(json["is_default"], true);
     assert_eq!(json["ratings_limit"], 3);
-    assert_eq!(json["ratings_order"], "mal,imdb,lb,rt,mc,rta,tmdb,trakt");
+    assert_eq!(json["ratings_order"], "mal,imdb,lb,rt,mc,rta,tmdb,trakt,mdblist,ebert");
 }
 
 #[tokio::test]

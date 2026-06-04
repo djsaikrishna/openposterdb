@@ -434,7 +434,7 @@ pub fn default_logo_backdrop_ratings_limit() -> i32 {
 }
 
 pub fn default_ratings_order() -> String {
-    "mal,imdb,lb,rt,mc,rta,tmdb,trakt".to_string()
+    "mal,imdb,lb,rt,mc,rta,tmdb,trakt,mdblist,ebert".to_string()
 }
 
 /// Default rating-source exclusion list: empty (exclude nothing).
@@ -556,13 +556,13 @@ impl BadgeSize {
 
 impl_str_enum!(BadgeSize);
 
-/// Validate ratings_limit is 0–8.
+/// Validate ratings_limit is 0–10 (one slot per available rating source).
 pub fn validate_ratings_limit(limit: i32) -> Result<(), AppError> {
-    if (0..=8).contains(&limit) {
+    if (0..=10).contains(&limit) {
         Ok(())
     } else {
         Err(AppError::BadRequest(
-            "ratings_limit must be between 0 and 8".into(),
+            "ratings_limit must be between 0 and 10".into(),
         ))
     }
 }
@@ -754,7 +754,7 @@ mod tests {
 
     #[test]
     fn validate_ratings_limit_accepts_valid() {
-        for i in 0..=8 {
+        for i in 0..=10 {
             assert!(validate_ratings_limit(i).is_ok(), "limit {i} should be valid");
         }
     }
@@ -766,7 +766,7 @@ mod tests {
 
     #[test]
     fn validate_ratings_limit_rejects_too_large() {
-        assert!(validate_ratings_limit(9).is_err());
+        assert!(validate_ratings_limit(11).is_err());
         assert!(validate_ratings_limit(100).is_err());
     }
 
@@ -1807,7 +1807,7 @@ impl Default for RenderSettings {
             lang: Arc::from("en"),
             textless: false,
             ratings_limit: default_ratings_limit(),
-            ratings_order: Arc::from("mal,imdb,lb,rt,mc,rta,tmdb,trakt"),
+            ratings_order: Arc::from(default_ratings_order()),
             ratings_exclude: Arc::from(""),
             is_default: true,
             poster_position: BadgePosition::BottomCenter,

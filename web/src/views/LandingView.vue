@@ -102,6 +102,8 @@ const ratingIcons = [
   { src: "/icons/trakt.webp", label: "Trakt", color: "rgb(175, 15, 45)" },
   { src: "/icons/lb.webp", label: "Letterboxd", color: "rgb(0, 155, 88)" },
   { src: "/icons/mal.webp", label: "MyAnimeList", color: "rgb(34, 60, 120)" },
+  { src: "/icons/mdblist.webp", label: "MDBList", color: "rgb(66, 132, 202)" },
+  { src: "/icons/ebert.webp", label: "Roger Ebert", color: "rgb(232, 89, 12)" },
 ];
 
 const officialIcons = [
@@ -117,6 +119,8 @@ const officialIcons = [
   { src: "/icons/official/trakt.webp", label: "Trakt" },
   { src: "/icons/official/letterboxd.webp", label: "Letterboxd" },
   { src: "/icons/official/mal.webp", label: "MyAnimeList" },
+  { src: "/icons/official/mdblist.webp", label: "MDBList" },
+  { src: "/icons/official/ebert.webp", label: "Roger Ebert" },
 ];
 
 const logos = [
@@ -208,8 +212,8 @@ const episodes = [
         <div class="space-y-4 text-center">
           <h2 class="text-2xl font-semibold">Rating Badges</h2>
           <p class="text-sm text-muted-foreground max-w-lg mx-auto">
-            Aggregate ratings from IMDb, TMDB, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, and
-            MyAnimeList.
+            Aggregate ratings from IMDb, TMDB, Rotten Tomatoes, Metacritic, Trakt, Letterboxd,
+            MyAnimeList, the MDBList score, and Roger Ebert.
           </p>
           <p class="text-xs text-muted-foreground font-medium">Icon style</p>
           <div class="flex flex-wrap justify-center items-center gap-4" role="list" aria-label="Supported rating sources">

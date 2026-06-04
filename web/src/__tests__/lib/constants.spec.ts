@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { ALL_RATING_SOURCES, DEFAULT_RATINGS_ORDER, parseRatingsOrder, parseRatingsExclude } from '@/lib/constants'
 
 describe('ALL_RATING_SOURCES', () => {
-  it('has 8 rating sources', () => {
-    expect(ALL_RATING_SOURCES).toHaveLength(8)
+  it('has 10 rating sources', () => {
+    expect(ALL_RATING_SOURCES).toHaveLength(10)
   })
 
   it('each source has key, label, and color', () => {
@@ -25,8 +25,8 @@ describe('parseRatingsOrder', () => {
     const result = parseRatingsOrder('imdb,tmdb')
     expect(result[0]).toBe('imdb')
     expect(result[1]).toBe('tmdb')
-    // All 8 keys should be present
-    expect(result).toHaveLength(8)
+    // All 10 keys should be present
+    expect(result).toHaveLength(10)
   })
 
   it('appends missing keys for partial input', () => {

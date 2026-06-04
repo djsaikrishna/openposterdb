@@ -58,7 +58,7 @@ pub struct ImageQuery {
     #[serde(default, rename = "imageSize")]
     #[param(rename = "imageSize", default = "medium", value_type = Option<ImageSizeParam>)]
     pub image_size: Option<String>,
-    /// Maximum number of rating badges to display (0–8).
+    /// Maximum number of rating badges to display (0–10).
     #[serde(default)]
     #[param(value_type = Option<i32>)]
     pub ratings_limit: Option<i32>,
@@ -829,7 +829,7 @@ mod tests {
     fn apply_query_overrides_rejects_invalid_ratings_limit() {
         let settings = Arc::new(db::RenderSettings::default());
         let query = ImageQuery {
-            ratings_limit: Some(9),
+            ratings_limit: Some(11),
             ..empty_query()
         };
         let result = apply_query_overrides(settings, &query, cache::ImageType::Poster);

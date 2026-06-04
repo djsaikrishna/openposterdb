@@ -89,9 +89,9 @@ test.describe('settings', () => {
     await expect(limitInput).toHaveValue('3')
   })
 
-  test('all 8 rating sources are listed in order', async ({ page }) => {
+  test('all 10 rating sources are listed in order', async ({ page }) => {
     const ratingSection = page.locator('text=Rating order').locator('..')
-    for (const label of ['IMDb', 'TMDB', 'Rotten Tomatoes (Critics)', 'Rotten Tomatoes (Audience)', 'Metacritic', 'Trakt', 'Letterboxd', 'MyAnimeList']) {
+    for (const label of ['IMDb', 'TMDB', 'Rotten Tomatoes (Critics)', 'Rotten Tomatoes (Audience)', 'Metacritic', 'Trakt', 'Letterboxd', 'MyAnimeList', 'MDBList', 'Roger Ebert']) {
       await expect(ratingSection.locator(`text=${label}`)).toBeVisible()
     }
   })

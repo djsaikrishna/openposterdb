@@ -399,6 +399,8 @@ mod tests {
             RatingSource::Trakt,
             RatingSource::Letterboxd,
             RatingSource::Mal,
+            RatingSource::Mdblist,
+            RatingSource::Ebert,
         ];
 
         for source in sources {
@@ -424,6 +426,8 @@ mod tests {
             RatingSource::Trakt,
             RatingSource::Letterboxd,
             RatingSource::Mal,
+            RatingSource::Mdblist,
+            RatingSource::Ebert,
         ];
 
         for source in sources {
@@ -481,6 +485,8 @@ mod tests {
             RatingSource::Trakt,
             RatingSource::Letterboxd,
             RatingSource::Mal,
+            RatingSource::Mdblist,
+            RatingSource::Ebert,
         ];
 
         for source in sources {
@@ -506,6 +512,8 @@ mod tests {
             RatingSource::Trakt,
             RatingSource::Letterboxd,
             RatingSource::Mal,
+            RatingSource::Mdblist,
+            RatingSource::Ebert,
         ];
 
         for source in sources {

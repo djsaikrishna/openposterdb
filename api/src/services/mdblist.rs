@@ -18,6 +18,9 @@ pub struct MdblistResponse {
     pub ratings: Vec<MdblistRating>,
     #[serde(default)]
     pub ids: MdblistIds,
+    /// MDBList's own aggregated 0–100 score (rendered as the `mdblist` source).
+    #[serde(default)]
+    pub score: Option<f64>,
 }
 
 #[derive(Debug, Default, Deserialize)]

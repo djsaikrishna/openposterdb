@@ -180,7 +180,7 @@ async fn get_settings_returns_defaults() {
     assert_eq!(json["textless"], false);
     assert_eq!(json["fanart_available"], true);
     assert_eq!(json["ratings_limit"], 3);
-    assert_eq!(json["ratings_order"], "mal,imdb,lb,rt,mc,rta,tmdb,trakt");
+    assert_eq!(json["ratings_order"], "mal,imdb,lb,rt,mc,rta,tmdb,trakt,mdblist,ebert");
 }
 
 #[tokio::test]
@@ -316,7 +316,7 @@ async fn update_settings_rejects_invalid_ratings_limit() {
         .body(Body::from(
             serde_json::json!({
                 "image_source": "t",
-                "ratings_limit": 9
+                "ratings_limit": 11
             })
             .to_string(),
         ))
