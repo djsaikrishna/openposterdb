@@ -331,4 +331,36 @@ test.describe('free API key card', () => {
     // Image should still be visible (old stays until new loads)
     await expect(resultImg).toBeVisible({ timeout: 60_000 })
   })
+
+  test('card reflects the server ratings order and exposes the settings endpoint', async ({ page, request }) => {
+    const token = await getAdminToken(request)
+    const settingsRes = await request.get('/api/admin/settings', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const settings = await settingsRes.json()
+    settings.free_api_key_enabled = true
+    settings.ratings_order = 'tmdb,imdb,rt'
+    await request.put('/api/admin/settings', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: settings,
+    })
+
+    // The public endpoint returns the operator's configured defaults.
+    const pub = await request.get('/api/free-key/settings')
+    expect(pub.status()).toBe(200)
+    expect((await pub.json()).ratings_order).toBe('tmdb,imdb,rt')
+
+    // The card's priority list reflects that order (TMDB first) — proving the
+    // async load + seeding ran end-to-end against the real server.
+    await page.goto('/')
+    await page.locator('text=Try it out').click()
+    const priorityLabels = page.locator('.border-blue-500\\/30 span.flex-1')
+    await expect(priorityLabels.first()).toHaveText('TMDB')
+  })
+
+  test('settings endpoint returns 401 when the free key is disabled', async ({ request }) => {
+    await setFreeApiKey(request, false)
+    const res = await request.get('/api/free-key/settings')
+    expect(res.status()).toBe(401)
+  })
 })

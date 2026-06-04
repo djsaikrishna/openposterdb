@@ -320,6 +320,100 @@ async fn no_env_var_not_locked_in_settings_response() {
     assert_eq!(json["free_api_key_locked"], false);
 }
 
+// --- GET /api/free-key/settings (public, reflects global defaults) ---
+
+#[tokio::test]
+async fn free_key_settings_rejected_when_disabled() {
+    let (app, _state) = common::setup_test_app().await;
+
+    let req = Request::builder()
+        .uri("/api/free-key/settings")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn free_key_settings_returns_defaults_when_enabled() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    set_free_api_key_enabled(&app, &token, true).await;
+
+    let req = Request::builder()
+        .uri("/api/free-key/settings")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    // Default render settings are present and enum-coded the same as the image API.
+    assert_eq!(json["ratings_order"], "mal,imdb,lb,rt,mc,rta,tmdb,trakt,mdblist,ebert");
+    assert_eq!(json["ratings_exclude"], "");
+    assert_eq!(json["image_source"], "t");
+    assert_eq!(json["lang"], "en");
+    // Operational flags from the admin response must NOT leak onto the public endpoint.
+    assert!(json.get("free_api_key_locked").is_none());
+    assert!(json.get("fanart_available").is_none());
+}
+
+#[tokio::test]
+async fn free_key_settings_reflects_admin_changes() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    // Enable the free key and set a custom global order + poster badge style.
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/admin/settings")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(json_body(serde_json::json!({
+            "image_source": "t",
+            "free_api_key_enabled": true,
+            "ratings_order": "imdb,tmdb",
+            "ratings_exclude": "rt",
+            "poster_badge_style": "h",
+        })))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // The public endpoint should reflect those values (cache invalidated on update).
+    let req = Request::builder()
+        .uri("/api/free-key/settings")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["ratings_order"], "imdb,tmdb");
+    assert_eq!(json["ratings_exclude"], "rt");
+    assert_eq!(json["poster_badge_style"], "h");
+}
+
+#[tokio::test]
+async fn free_key_settings_reflects_env_override() {
+    let (app, _state) = common::setup_test_app_with_options(TestAppOptions {
+        free_key_enabled: Some(true),
+        ..Default::default()
+    })
+    .await;
+
+    // No DB toggle needed — the env override forces the free key on.
+    let req = Request::builder()
+        .uri("/api/free-key/settings")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
 #[tokio::test]
 async fn env_var_auth_status_reflects_override() {
     let (app, _state) = common::setup_test_app_with_options(TestAppOptions {

@@ -63,6 +63,20 @@ export const ALL_RATING_SOURCES = [
 
 export const DEFAULT_RATINGS_ORDER = 'mal,imdb,lb,rt,mc,rta,tmdb,trakt,mdblist,ebert'
 
+// Maps from the short enum codes used by the image query params / settings API
+// to human-readable labels. Used to show what a server "default" resolves to in
+// the free-key "Try it out" form. `d` (style/direction) means "auto" — resolved
+// at render time from the badge position/direction.
+export const BADGE_STYLE_LABELS: Record<string, string> = { h: 'Horizontal', v: 'Vertical', d: 'Auto' }
+export const BADGE_DIRECTION_LABELS: Record<string, string> = { h: 'Horizontal', v: 'Vertical', d: 'Auto' }
+export const LABEL_STYLE_LABELS: Record<string, string> = { t: 'Text', i: 'Icon', o: 'Official' }
+export const BADGE_SIZE_LABELS: Record<string, string> = { xs: 'Extra Small', s: 'Small', m: 'Medium', l: 'Large', xl: 'Extra Large' }
+export const IMAGE_SOURCE_LABELS: Record<string, string> = { t: 'TMDB', f: 'Fanart.tv' }
+export const POSITION_LABELS: Record<string, string> = {
+  bc: 'Bottom Center', tc: 'Top Center', l: 'Left', r: 'Right',
+  tl: 'Top Left', tr: 'Top Right', bl: 'Bottom Left', br: 'Bottom Right',
+}
+
 export function parseRatingsOrder(order: string): string[] {
   const keys = order ? order.split(',').map(k => k.trim()).filter(Boolean) : []
   const allKeys = ALL_RATING_SOURCES.map(s => s.key)

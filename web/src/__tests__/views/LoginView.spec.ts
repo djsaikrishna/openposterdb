@@ -12,9 +12,11 @@ const mockAuthStore = {
   checkSetupRequired: vi.fn().mockResolvedValue(false),
   login: vi.fn(),
   loginWithApiKey: vi.fn(),
+  loadFreeKeyDefaults: vi.fn().mockResolvedValue(undefined),
   isAuthenticated: false,
   freeApiKeyEnabled: false,
   disablePublicPages: false,
+  freeKeyDefaults: null,
 }
 
 vi.mock('vue-router', () => ({

@@ -1,8 +1,46 @@
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 
+/**
+ * Global default render settings the free API key serves with, returned by
+ * `GET /api/free-key/settings`. Enum-coded fields use the same short codes as
+ * the image query params (e.g. badge style `h`/`v`/`d`, image source `t`/`f`).
+ */
+export interface FreeKeyDefaults {
+  image_source: string
+  lang: string
+  textless: boolean
+  ratings_limit: number
+  ratings_order: string
+  ratings_exclude: string
+  poster_position: string
+  logo_ratings_limit: number
+  backdrop_ratings_limit: number
+  poster_badge_style: string
+  logo_badge_style: string
+  backdrop_badge_style: string
+  poster_label_style: string
+  logo_label_style: string
+  backdrop_label_style: string
+  poster_badge_direction: string
+  poster_badge_size: string
+  logo_badge_size: string
+  backdrop_badge_size: string
+  backdrop_position: string
+  backdrop_badge_direction: string
+  episode_ratings_limit: number
+  episode_badge_style: string
+  episode_label_style: string
+  episode_badge_size: string
+  episode_position: string
+  episode_badge_direction: string
+  episode_blur: boolean
+}
+
 export const authApi = {
   status: (): Promise<Response> =>
     fetch(`${BASE_URL}/api/auth/status`),
+  freeKeySettings: (): Promise<Response> =>
+    fetch(`${BASE_URL}/api/free-key/settings`),
   setup: (username: string, password: string): Promise<Response> =>
     fetch(`${BASE_URL}/api/auth/setup`, {
       method: 'POST',
