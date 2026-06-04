@@ -84,6 +84,13 @@ function mountCard(freeApiKeyEnabled = true, defaults: FreeKeyDefaults | null = 
           template: '<button :disabled="disabled" :type="type" @click="$emit(\'click\')"><slot /></button>',
           props: ['disabled', 'variant', 'size', 'type'],
         },
+        Checkbox: {
+          name: 'Checkbox',
+          template: '<button type="button" role="checkbox" :id="id" :aria-checked="modelValue ? \'true\' : \'false\'" @click="$emit(\'update:modelValue\', !modelValue)" />',
+          props: ['modelValue', 'id', 'ariaLabel'],
+          emits: ['update:modelValue'],
+        },
+        Label: { template: '<label><slot /></label>', props: ['for'] },
         ChevronRight: { template: '<svg />' },
         Loader2: { template: '<svg />' },
       },
@@ -418,10 +425,38 @@ describe('FreeApiKeyCard', () => {
     expect(wrapper.text()).toContain('Badge style: default (Horizontal)')
   })
 
-  it('dims excluded sources in the priority list', () => {
+  it('dims excluded sources in the priority list and pre-checks them', () => {
     const wrapper = mountCard(true, makeDefaults({ ratings_exclude: 'rt' }))
     const rtLabel = orderLabels(wrapper).find(s => s.text() === 'Rotten Tomatoes (Critics)')
     expect(rtLabel?.classes()).toContain('line-through')
+    // The exclude checkbox for rt is pre-checked from the server baseline.
+    expect(wrapper.find('#free-exclude-rt').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('#free-exclude-imdb').attributes('aria-checked')).toBe('false')
+  })
+
+  it('does not send ratings_exclude when the selection matches the server baseline', () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_exclude: 'rt' }))
+    expect(findCurlCode(wrapper).text()).not.toContain('ratings_exclude=')
+  })
+
+  it('excluding a source adds it to the curl and dims it in the list', async () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_exclude: '' }))
+    await wrapper.find('#free-exclude-rt').trigger('click')
+    await flushPromises()
+
+    expect(findCurlCode(wrapper).text()).toContain('ratings_exclude=rt')
+    const rtLabel = orderLabels(wrapper).find(s => s.text() === 'Rotten Tomatoes (Critics)')
+    expect(rtLabel?.classes()).toContain('line-through')
+  })
+
+  it('unchecking a server exclusion emits an empty ratings_exclude override', async () => {
+    const wrapper = mountCard(true, makeDefaults({ ratings_exclude: 'rt' }))
+    await wrapper.find('#free-exclude-rt').trigger('click')
+    await flushPromises()
+
+    // Empty value (trailing `=`) is required to override the server's exclusion.
+    expect(findCurlCode(wrapper).text()).toContain('ratings_exclude=')
+    expect(findCurlCode(wrapper).text()).not.toContain('ratings_exclude=rt')
   })
 
   it('does not send ratings_order when the list matches the server order', () => {

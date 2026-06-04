@@ -363,4 +363,27 @@ test.describe('free API key card', () => {
     const res = await request.get('/api/free-key/settings')
     expect(res.status()).toBe(401)
   })
+
+  test('excluding a rating source adds ratings_exclude to the curl example', async ({ page, request }) => {
+    const token = await getAdminToken(request)
+    const settingsRes = await request.get('/api/admin/settings', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const settings = await settingsRes.json()
+    settings.free_api_key_enabled = true
+    settings.ratings_exclude = '' // start with nothing excluded
+    await request.put('/api/admin/settings', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: settings,
+    })
+
+    await page.goto('/')
+    await page.locator('text=Try it out').click()
+
+    const curlBlock = page.locator('code:has-text("curl")')
+    await expect(curlBlock).not.toContainText('ratings_exclude')
+
+    await page.locator('#free-exclude-rt').click()
+    await expect(curlBlock).toContainText('ratings_exclude=rt')
+  })
 })

@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import {
   FREE_API_KEY,
   LANGUAGES,
+  ALL_RATING_SOURCES,
   DEFAULT_RATINGS_ORDER,
   parseRatingsOrder,
   parseRatingsExclude,
@@ -16,6 +17,8 @@ import {
 } from '@/lib/constants'
 import RatingsOrderList from '@/components/RatingsOrderList.vue'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -84,18 +87,38 @@ const sizeOptions = computed(() => {
   ]
 })
 
-// Source keys the server excludes from badges — shown dimmed in the priority list.
-const excludedSources = computed(() => parseRatingsExclude(defaults.value?.ratings_exclude ?? ''))
+// Rating sources to exclude from badges. Seeded from the server's exclusion list
+// and editable via the checkboxes below; excluded sources are dimmed in the
+// priority list. Sent as a `ratings_exclude` override only when changed.
+const ratingsExcludeList = ref<string[]>([])
+const excludeBaseline = ref<string[]>([])
+const ratingsExcludeChanged = computed(
+  () => ratingsExcludeList.value.join(',') !== excludeBaseline.value.join(','),
+)
 
-// When the server defaults arrive, adopt the server's rating order as the new
-// baseline. Only overwrite the visible list if the user hasn't reordered yet,
-// so a slow fetch never clobbers an in-progress edit.
+function isExcluded(key: string): boolean {
+  return ratingsExcludeList.value.includes(key)
+}
+function toggleExclude(key: string, checked: boolean) {
+  const set = new Set(ratingsExcludeList.value)
+  if (checked) set.add(key)
+  else set.delete(key)
+  // Keep canonical source order so the emitted value is stable regardless of click order.
+  ratingsExcludeList.value = ALL_RATING_SOURCES.map(s => s.key).filter(k => set.has(k))
+}
+
+// When the server defaults arrive, adopt the server's rating order and exclusion
+// list as the new baselines. Only overwrite a list if the user hasn't edited it
+// yet, so a slow fetch never clobbers an in-progress edit.
 watch(defaults, (d) => {
-  if (!d?.ratings_order) return
+  if (!d) return
   const serverOrder = parseRatingsOrder(d.ratings_order)
-  const wasPristine = !ratingsOrderChanged.value
+  if (!ratingsOrderChanged.value) ratingsOrderList.value = [...serverOrder]
   baselineOrder.value = serverOrder
-  if (wasPristine) ratingsOrderList.value = [...serverOrder]
+
+  const serverExclude = parseRatingsExclude(d.ratings_exclude)
+  if (!ratingsExcludeChanged.value) ratingsExcludeList.value = [...serverExclude]
+  excludeBaseline.value = serverExclude
 }, { immediate: true })
 
 // --- Per-image-type server defaults reflected in the dropdown "default" labels ---
@@ -182,6 +205,8 @@ const queryString = computed(() => {
   const sizeVal = imageSize.value === 'default' ? '' : imageSize.value
   if (sizeVal) params.set('imageSize', sizeVal)
   if (ratingsOrderChanged.value) params.set('ratings_order', ratingsOrderList.value.join(','))
+  // Emit even when empty, so unchecking the server's exclusions clears them.
+  if (ratingsExcludeChanged.value) params.set('ratings_exclude', ratingsExcludeList.value.join(','))
   if (badgeStyle.value !== 'default') params.set('badge_style', badgeStyle.value)
   if (labelStyle.value !== 'default') params.set('label_style', labelStyle.value)
   if (badgeSize.value !== 'default') params.set('badge_size', badgeSize.value)
@@ -384,7 +409,35 @@ async function handleFetch() {
         </div>
         <div class="space-y-1 flex flex-col items-center">
           <p class="text-xs text-muted-foreground">Rating priority</p>
-          <RatingsOrderList v-model="ratingsOrderList" :excluded="excludedSources" compact />
+          <RatingsOrderList v-model="ratingsOrderList" :excluded="ratingsExcludeList" compact />
+        </div>
+        <div class="space-y-1 flex flex-col items-center">
+          <p class="text-xs text-muted-foreground">Exclude ratings</p>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 max-w-sm w-full">
+            <div
+              v-for="source in ALL_RATING_SOURCES"
+              :key="source.key"
+              class="flex items-start gap-1.5 text-left"
+            >
+              <Checkbox
+                :id="`free-exclude-${source.key}`"
+                :model-value="isExcluded(source.key)"
+                :aria-label="`Exclude ${source.label}`"
+                class="bg-background shrink-0 mt-0.5"
+                @update:model-value="(v) => toggleExclude(source.key, !!v)"
+              />
+              <Label
+                :for="`free-exclude-${source.key}`"
+                class="flex items-start gap-1.5 text-xs font-normal leading-snug cursor-pointer min-w-0"
+              >
+                <span
+                  class="inline-block w-2 h-2 rounded-full shrink-0 mt-1"
+                  :style="{ backgroundColor: source.color }"
+                ></span>
+                <span>{{ source.label }}</span>
+              </Label>
+            </div>
+          </div>
         </div>
         <code class="block text-xs font-mono bg-muted px-3 py-2 rounded text-muted-foreground break-all select-all">{{ curlExample }}</code>
         <div class="flex flex-wrap gap-2">
