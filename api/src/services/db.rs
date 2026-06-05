@@ -98,6 +98,18 @@ impl BadgeStyle {
             Self::Horizontal
         }
     }
+
+    /// The effective style once the badge shape is applied. A pill always renders
+    /// as a horizontal lozenge, so its style is normalized to `Horizontal`
+    /// regardless of the configured value. Both the renderer and the cache key
+    /// go through this so pill+vertical and pill+horizontal don't produce two
+    /// cache entries (or two renders) for byte-identical output.
+    pub fn for_shape(self, shape: BadgeShape) -> Self {
+        match shape {
+            BadgeShape::Pill => Self::Horizontal,
+            BadgeShape::Rounded => self,
+        }
+    }
 }
 
 impl_str_enum!(BadgeStyle);
@@ -194,6 +206,101 @@ impl LabelStyle {
 }
 
 impl_str_enum!(LabelStyle);
+
+const SHAPE_ROUNDED: &str = "r";
+const SHAPE_PILL: &str = "p";
+
+/// Corner shape of a rating badge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BadgeShape {
+    /// Slightly rounded rectangle (the original look).
+    Rounded,
+    /// Fully rounded ends — a "pill" (corner radius = half the short axis).
+    Pill,
+}
+
+impl BadgeShape {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Rounded => SHAPE_ROUNDED,
+            Self::Pill => SHAPE_PILL,
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, AppError> {
+        match s {
+            SHAPE_ROUNDED => Ok(Self::Rounded),
+            SHAPE_PILL => Ok(Self::Pill),
+            _ => Err(AppError::BadRequest(
+                format!("badge_shape must be '{SHAPE_ROUNDED}' or '{SHAPE_PILL}'"),
+            )),
+        }
+    }
+}
+
+impl_str_enum!(BadgeShape);
+
+const BG_DEFAULT: &str = "d";
+const BG_DARK: &str = "k";
+const BG_TRANSPARENT: &str = "t";
+const BG_NONE: &str = "n";
+
+/// Background treatment behind a rating badge's label and value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BadgeBackground {
+    /// Source-coloured label section + dark value section (the original look).
+    Default,
+    /// Uniformly dark badge (no source colour).
+    Dark,
+    /// Semi-transparent background that lets the artwork show through.
+    Transparent,
+    /// No background at all — label/value drawn directly on the image with a
+    /// subtle shadow for legibility.
+    None,
+}
+
+impl BadgeBackground {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Default => BG_DEFAULT,
+            Self::Dark => BG_DARK,
+            Self::Transparent => BG_TRANSPARENT,
+            Self::None => BG_NONE,
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, AppError> {
+        match s {
+            BG_DEFAULT => Ok(Self::Default),
+            BG_DARK => Ok(Self::Dark),
+            BG_TRANSPARENT => Ok(Self::Transparent),
+            BG_NONE => Ok(Self::None),
+            _ => Err(AppError::BadRequest(
+                format!("badge_background must be '{BG_DEFAULT}', '{BG_DARK}', '{BG_TRANSPARENT}', or '{BG_NONE}'"),
+            )),
+        }
+    }
+}
+
+impl_str_enum!(BadgeBackground);
+
+/// Visual appearance of a badge: its corner shape and background treatment.
+/// Bundled so it can be threaded through the render pipeline as one value.
+/// `BadgeAppearance::default()` reproduces the original badge look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BadgeAppearance {
+    pub shape: BadgeShape,
+    pub background: BadgeBackground,
+}
+
+impl Default for BadgeAppearance {
+    fn default() -> Self {
+        Self {
+            shape: BadgeShape::Rounded,
+            background: BadgeBackground::Default,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageSource {
@@ -510,6 +617,14 @@ pub fn default_backdrop_badge_style() -> BadgeStyle {
 
 pub fn default_label_style() -> LabelStyle {
     LabelStyle::Official
+}
+
+pub fn default_badge_shape() -> BadgeShape {
+    BadgeShape::Rounded
+}
+
+pub fn default_badge_background() -> BadgeBackground {
+    BadgeBackground::Default
 }
 
 pub fn default_poster_badge_direction() -> BadgeDirection {
@@ -1784,6 +1899,14 @@ pub struct UpsertApiKeySettings<'a> {
     pub episode_badge_direction: &'a str,
     pub episode_blur: bool,
     pub ratings_exclude: &'a str,
+    pub poster_badge_shape: &'a str,
+    pub logo_badge_shape: &'a str,
+    pub backdrop_badge_shape: &'a str,
+    pub episode_badge_shape: &'a str,
+    pub poster_badge_background: &'a str,
+    pub logo_badge_background: &'a str,
+    pub backdrop_badge_background: &'a str,
+    pub episode_badge_background: &'a str,
 }
 
 pub async fn upsert_api_key_settings(
@@ -1821,6 +1944,14 @@ pub async fn upsert_api_key_settings(
         episode_badge_direction: Set(params.episode_badge_direction.to_string()),
         episode_blur: Set(params.episode_blur),
         ratings_exclude: Set(params.ratings_exclude.to_string()),
+        poster_badge_shape: Set(params.poster_badge_shape.to_string()),
+        logo_badge_shape: Set(params.logo_badge_shape.to_string()),
+        backdrop_badge_shape: Set(params.backdrop_badge_shape.to_string()),
+        episode_badge_shape: Set(params.episode_badge_shape.to_string()),
+        poster_badge_background: Set(params.poster_badge_background.to_string()),
+        logo_badge_background: Set(params.logo_badge_background.to_string()),
+        backdrop_badge_background: Set(params.backdrop_badge_background.to_string()),
+        episode_badge_background: Set(params.episode_badge_background.to_string()),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -1855,6 +1986,14 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::EpisodeBadgeDirection,
                     api_key_settings::Column::EpisodeBlur,
                     api_key_settings::Column::RatingsExclude,
+                    api_key_settings::Column::PosterBadgeShape,
+                    api_key_settings::Column::LogoBadgeShape,
+                    api_key_settings::Column::BackdropBadgeShape,
+                    api_key_settings::Column::EpisodeBadgeShape,
+                    api_key_settings::Column::PosterBadgeBackground,
+                    api_key_settings::Column::LogoBadgeBackground,
+                    api_key_settings::Column::BackdropBadgeBackground,
+                    api_key_settings::Column::EpisodeBadgeBackground,
                 ])
                 .to_owned(),
         )
@@ -1911,6 +2050,33 @@ pub struct RenderSettings {
     pub episode_position: BadgePosition,
     pub episode_badge_direction: BadgeDirection,
     pub episode_blur: bool,
+    pub poster_badge_shape: BadgeShape,
+    pub logo_badge_shape: BadgeShape,
+    pub backdrop_badge_shape: BadgeShape,
+    pub episode_badge_shape: BadgeShape,
+    pub poster_badge_background: BadgeBackground,
+    pub logo_badge_background: BadgeBackground,
+    pub backdrop_badge_background: BadgeBackground,
+    pub episode_badge_background: BadgeBackground,
+}
+
+impl RenderSettings {
+    /// Badge appearance (shape + background) for posters.
+    pub fn poster_appearance(&self) -> BadgeAppearance {
+        BadgeAppearance { shape: self.poster_badge_shape, background: self.poster_badge_background }
+    }
+    /// Badge appearance (shape + background) for logos.
+    pub fn logo_appearance(&self) -> BadgeAppearance {
+        BadgeAppearance { shape: self.logo_badge_shape, background: self.logo_badge_background }
+    }
+    /// Badge appearance (shape + background) for backdrops.
+    pub fn backdrop_appearance(&self) -> BadgeAppearance {
+        BadgeAppearance { shape: self.backdrop_badge_shape, background: self.backdrop_badge_background }
+    }
+    /// Badge appearance (shape + background) for episode stills.
+    pub fn episode_appearance(&self) -> BadgeAppearance {
+        BadgeAppearance { shape: self.episode_badge_shape, background: self.episode_badge_background }
+    }
 }
 
 impl Default for RenderSettings {
@@ -1946,6 +2112,14 @@ impl Default for RenderSettings {
             episode_position: default_episode_position(),
             episode_badge_direction: default_episode_badge_direction(),
             episode_blur: false,
+            poster_badge_shape: default_badge_shape(),
+            logo_badge_shape: default_badge_shape(),
+            backdrop_badge_shape: default_badge_shape(),
+            episode_badge_shape: default_badge_shape(),
+            poster_badge_background: default_badge_background(),
+            logo_badge_background: default_badge_background(),
+            backdrop_badge_background: default_badge_background(),
+            episode_badge_background: default_badge_background(),
         }
     }
 }
@@ -2015,6 +2189,14 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
             .get("episode_blur")
             .map(|v| v == "true")
             .unwrap_or(defaults.episode_blur),
+        poster_badge_shape: global_or(globals, "poster_badge_shape", BadgeShape::parse, defaults.poster_badge_shape),
+        logo_badge_shape: global_or(globals, "logo_badge_shape", BadgeShape::parse, defaults.logo_badge_shape),
+        backdrop_badge_shape: global_or(globals, "backdrop_badge_shape", BadgeShape::parse, defaults.backdrop_badge_shape),
+        episode_badge_shape: global_or(globals, "episode_badge_shape", BadgeShape::parse, defaults.episode_badge_shape),
+        poster_badge_background: global_or(globals, "poster_badge_background", BadgeBackground::parse, defaults.poster_badge_background),
+        logo_badge_background: global_or(globals, "logo_badge_background", BadgeBackground::parse, defaults.logo_badge_background),
+        backdrop_badge_background: global_or(globals, "backdrop_badge_background", BadgeBackground::parse, defaults.backdrop_badge_background),
+        episode_badge_background: global_or(globals, "episode_badge_background", BadgeBackground::parse, defaults.episode_badge_background),
     }
 }
 
@@ -2057,6 +2239,14 @@ pub async fn get_effective_render_settings(
                 episode_position: parse_setting_or_default(&s.episode_position, "episode_position", BadgePosition::parse, default_episode_position()),
                 episode_badge_direction: parse_setting_or_default(&s.episode_badge_direction, "episode_badge_direction", BadgeDirection::parse, default_episode_badge_direction()),
                 episode_blur: s.episode_blur,
+                poster_badge_shape: parse_setting_or_default(&s.poster_badge_shape, "poster_badge_shape", BadgeShape::parse, default_badge_shape()),
+                logo_badge_shape: parse_setting_or_default(&s.logo_badge_shape, "logo_badge_shape", BadgeShape::parse, default_badge_shape()),
+                backdrop_badge_shape: parse_setting_or_default(&s.backdrop_badge_shape, "backdrop_badge_shape", BadgeShape::parse, default_badge_shape()),
+                episode_badge_shape: parse_setting_or_default(&s.episode_badge_shape, "episode_badge_shape", BadgeShape::parse, default_badge_shape()),
+                poster_badge_background: parse_setting_or_default(&s.poster_badge_background, "poster_badge_background", BadgeBackground::parse, default_badge_background()),
+                logo_badge_background: parse_setting_or_default(&s.logo_badge_background, "logo_badge_background", BadgeBackground::parse, default_badge_background()),
+                backdrop_badge_background: parse_setting_or_default(&s.backdrop_badge_background, "backdrop_badge_background", BadgeBackground::parse, default_badge_background()),
+                episode_badge_background: parse_setting_or_default(&s.episode_badge_background, "episode_badge_background", BadgeBackground::parse, default_badge_background()),
             };
         }
         Ok(None) => {} // no per-key override, fall through

@@ -48,6 +48,14 @@ export interface RenderSettings {
   episode_position: string
   episode_badge_direction: string
   episode_blur: boolean
+  poster_badge_shape: string
+  logo_badge_shape: string
+  backdrop_badge_shape: string
+  episode_badge_shape: string
+  poster_badge_background: string
+  logo_badge_background: string
+  backdrop_badge_background: string
+  episode_badge_background: string
 }
 
 const props = defineProps<{
@@ -56,10 +64,10 @@ const props = defineProps<{
   loadSettings: () => Promise<RenderSettings | null>
   saveSettings: (s: SaveSettingsPayload) => Promise<string | null>
   resetSettings?: () => Promise<boolean>
-  fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string, posterSplit?: boolean) => Promise<Response>
-  fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, ratingsExclude?: string) => Promise<Response>
-  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, ratingsExclude?: string) => Promise<Response>
-  fetchEpisodePreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean, ratingsExclude?: string) => Promise<Response>
+  fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string, posterSplit?: boolean, badgeShape?: string, badgeBackground?: string) => Promise<Response>
+  fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, ratingsExclude?: string, badgeShape?: string, badgeBackground?: string) => Promise<Response>
+  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, ratingsExclude?: string, badgeShape?: string, badgeBackground?: string) => Promise<Response>
+  fetchEpisodePreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean, ratingsExclude?: string, badgeShape?: string, badgeBackground?: string) => Promise<Response>
 }>()
 
 const editFanart = ref(props.settings.image_source === 'f')
@@ -94,6 +102,14 @@ const editEpisodeBadgeSize = ref(props.settings.episode_badge_size || 'l')
 const editEpisodePosition = ref(props.settings.episode_position || 'tr')
 const editEpisodeBadgeDirection = ref(props.settings.episode_badge_direction || 'v')
 const editEpisodeBlur = ref(props.settings.episode_blur ?? false)
+const editPosterBadgeShape = ref(props.settings.poster_badge_shape || 'r')
+const editLogoBadgeShape = ref(props.settings.logo_badge_shape || 'r')
+const editBackdropBadgeShape = ref(props.settings.backdrop_badge_shape || 'r')
+const editEpisodeBadgeShape = ref(props.settings.episode_badge_shape || 'r')
+const editPosterBadgeBackground = ref(props.settings.poster_badge_background || 'd')
+const editLogoBadgeBackground = ref(props.settings.logo_badge_background || 'd')
+const editBackdropBadgeBackground = ref(props.settings.backdrop_badge_background || 'd')
+const editEpisodeBadgeBackground = ref(props.settings.episode_badge_background || 'd')
 
 function applySettings(s: RenderSettings) {
   editFanart.value = s.image_source === 'f'
@@ -125,6 +141,14 @@ function applySettings(s: RenderSettings) {
   editEpisodePosition.value = s.episode_position || 'tr'
   editEpisodeBadgeDirection.value = s.episode_badge_direction || 'v'
   editEpisodeBlur.value = s.episode_blur ?? false
+  editPosterBadgeShape.value = s.poster_badge_shape || 'r'
+  editLogoBadgeShape.value = s.logo_badge_shape || 'r'
+  editBackdropBadgeShape.value = s.backdrop_badge_shape || 'r'
+  editEpisodeBadgeShape.value = s.episode_badge_shape || 'r'
+  editPosterBadgeBackground.value = s.poster_badge_background || 'd'
+  editLogoBadgeBackground.value = s.logo_badge_background || 'd'
+  editBackdropBadgeBackground.value = s.backdrop_badge_background || 'd'
+  editEpisodeBadgeBackground.value = s.episode_badge_background || 'd'
 }
 const currentSettings = ref<RenderSettings>(props.settings)
 const saving = ref(false)
@@ -190,6 +214,14 @@ async function autoSave() {
       episode_position: editEpisodePosition.value,
       episode_badge_direction: editEpisodeBadgeDirection.value,
       episode_blur: editEpisodeBlur.value,
+      poster_badge_shape: editPosterBadgeShape.value,
+      logo_badge_shape: editLogoBadgeShape.value,
+      backdrop_badge_shape: editBackdropBadgeShape.value,
+      episode_badge_shape: editEpisodeBadgeShape.value,
+      poster_badge_background: editPosterBadgeBackground.value,
+      logo_badge_background: editLogoBadgeBackground.value,
+      backdrop_badge_background: editBackdropBadgeBackground.value,
+      episode_badge_background: editEpisodeBadgeBackground.value,
     })
     if (err) {
       error.value = err
@@ -216,7 +248,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground],
   () => {
     if (syncing) return
     autoSave()
@@ -275,15 +307,14 @@ function onPreviewLoad(state: PreviewState, e: Event) {
 
 async function fetchPreviewImage(
   state: PreviewState,
-  fetcher: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string) => Promise<Response>,
-  extraArgs?: { posterPosition?: string; badgeStyle?: string; labelStyle?: string; badgeDirection?: string; badgeSize?: string },
+  fetcher: (ratingsLimit: number, ratingsOrder: string) => Promise<Response>,
 ) {
   state.loading = true
   state.error = false
   const generation = ++state.generation
 
   try {
-    const res = await fetcher(editRatingsLimit.value, editRatingsOrder.value.join(','), extraArgs?.posterPosition, extraArgs?.badgeStyle, extraArgs?.labelStyle, extraArgs?.badgeDirection, extraArgs?.badgeSize, editRatingsExclude.value.join(','))
+    const res = await fetcher(editRatingsLimit.value, editRatingsOrder.value.join(','))
     if (generation !== state.generation) return
     if (!res.ok) {
       state.error = true
@@ -308,24 +339,24 @@ let backdropPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let episodePreviewTimer: ReturnType<typeof setTimeout> | null = null
 
 function updatePosterPreview() {
-  fetchPreviewImage(posterPreview.value, (_limit, order) => props.fetchPreview(editRatingsLimit.value, order, editPosterPosition.value, editPosterBadgeStyle.value, editPosterLabelStyle.value, editPosterBadgeDirection.value, editPosterBadgeSize.value, editRatingsExclude.value.join(','), editPosterBadgeSplit.value))
+  fetchPreviewImage(posterPreview.value, (_limit, order) => props.fetchPreview(editRatingsLimit.value, order, editPosterPosition.value, editPosterBadgeStyle.value, editPosterLabelStyle.value, editPosterBadgeDirection.value, editPosterBadgeSize.value, editRatingsExclude.value.join(','), editPosterBadgeSplit.value, editPosterBadgeShape.value, editPosterBadgeBackground.value))
 }
 
 function updateLogoPreview() {
   if (props.fetchLogoPreview) {
-    fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsLimit.value, order, editLogoBadgeStyle.value, editLogoLabelStyle.value, editLogoBadgeSize.value, editRatingsExclude.value.join(',')))
+    fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsLimit.value, order, editLogoBadgeStyle.value, editLogoLabelStyle.value, editLogoBadgeSize.value, editRatingsExclude.value.join(','), editLogoBadgeShape.value, editLogoBadgeBackground.value))
   }
 }
 
 function updateBackdropPreview() {
   if (props.fetchBackdropPreview) {
-    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value, editRatingsExclude.value.join(',')))
+    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value, editRatingsExclude.value.join(','), editBackdropBadgeShape.value, editBackdropBadgeBackground.value))
   }
 }
 
 function updateEpisodePreview() {
   if (props.fetchEpisodePreview) {
-    fetchPreviewImage(episodePreview.value, (_limit, order) => props.fetchEpisodePreview!(editEpisodeRatingsLimit.value, order, editEpisodeBadgeStyle.value, editEpisodeLabelStyle.value, editEpisodeBadgeSize.value, editEpisodePosition.value, editEpisodeBadgeDirection.value, editEpisodeBlur.value, editRatingsExclude.value.join(',')))
+    fetchPreviewImage(episodePreview.value, (_limit, order) => props.fetchEpisodePreview!(editEpisodeRatingsLimit.value, order, editEpisodeBadgeStyle.value, editEpisodeLabelStyle.value, editEpisodeBadgeSize.value, editEpisodePosition.value, editEpisodeBadgeDirection.value, editEpisodeBlur.value, editRatingsExclude.value.join(','), editEpisodeBadgeShape.value, editEpisodeBadgeBackground.value))
   }
 }
 
@@ -350,28 +381,28 @@ watch([editRatingsOrder, editRatingsExclude], () => {
 }, { deep: true })
 
 // Poster-only settings
-watch([editRatingsLimit, editPosterPosition, editPosterBadgeStyle, editPosterLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterBadgeSize], () => {
+watch([editRatingsLimit, editPosterPosition, editPosterBadgeStyle, editPosterLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterBadgeSize, editPosterBadgeShape, editPosterBadgeBackground], () => {
   if (syncing) return
   if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
   posterPreviewTimer = setTimeout(updatePosterPreview, 500)
 })
 
 // Logo-only settings
-watch([editLogoRatingsLimit, editLogoBadgeStyle, editLogoLabelStyle, editLogoBadgeSize], () => {
+watch([editLogoRatingsLimit, editLogoBadgeStyle, editLogoLabelStyle, editLogoBadgeSize, editLogoBadgeShape, editLogoBadgeBackground], () => {
   if (syncing) return
   if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
   logoPreviewTimer = setTimeout(updateLogoPreview, 500)
 })
 
 // Backdrop-only settings
-watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection], () => {
+watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropBadgeShape, editBackdropBadgeBackground], () => {
   if (syncing) return
   if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
   backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
 })
 
 // Episode-only settings
-watch([editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur], () => {
+watch([editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editEpisodeBadgeShape, editEpisodeBadgeBackground], () => {
   if (syncing) return
   if (episodePreviewTimer) clearTimeout(episodePreviewTimer)
   episodePreviewTimer = setTimeout(updateEpisodePreview, 500)
@@ -545,6 +576,7 @@ function toggleExclude(key: string, checked: boolean) {
             <Label :for="inputId('poster-badge-style')">Badge style</Label>
             <Select
               :model-value="editPosterBadgeStyle"
+              :disabled="editPosterBadgeShape === 'p'"
               @update:model-value="editPosterBadgeStyle = $event as string"
             >
               <SelectTrigger :id="inputId('poster-badge-style')" class="max-w-xs" data-testid="poster-badge-style-select">
@@ -556,6 +588,7 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="editPosterBadgeShape === 'p'" class="text-xs text-muted-foreground">Pills always render horizontally.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('poster-label-style')">Label style</Label>
@@ -588,6 +621,38 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="m">Medium</SelectItem>
                 <SelectItem value="l">Large</SelectItem>
                 <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('poster-badge-shape')">Badge shape</Label>
+            <Select
+              :model-value="editPosterBadgeShape"
+              @update:model-value="editPosterBadgeShape = $event as string"
+            >
+              <SelectTrigger :id="inputId('poster-badge-shape')" class="max-w-xs" data-testid="poster-badge-shape-select">
+                <SelectValue placeholder="Select shape" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="r">Rounded</SelectItem>
+                <SelectItem value="p">Pill</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('poster-badge-background')">Badge background</Label>
+            <Select
+              :model-value="editPosterBadgeBackground"
+              @update:model-value="editPosterBadgeBackground = $event as string"
+            >
+              <SelectTrigger :id="inputId('poster-badge-background')" class="max-w-xs" data-testid="poster-badge-background-select">
+                <SelectValue placeholder="Select background" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="d">Default</SelectItem>
+                <SelectItem value="k">Dark</SelectItem>
+                <SelectItem value="t">Transparent</SelectItem>
+                <SelectItem value="n">None</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -654,6 +719,7 @@ function toggleExclude(key: string, checked: boolean) {
             <Label :for="inputId('logo-badge-style')">Badge style</Label>
             <Select
               :model-value="editLogoBadgeStyle"
+              :disabled="editLogoBadgeShape === 'p'"
               @update:model-value="editLogoBadgeStyle = $event as string"
             >
               <SelectTrigger :id="inputId('logo-badge-style')" class="max-w-xs" data-testid="logo-badge-style-select">
@@ -664,6 +730,7 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="editLogoBadgeShape === 'p'" class="text-xs text-muted-foreground">Pills always render horizontally.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('logo-label-style')">Label style</Label>
@@ -696,6 +763,38 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="m">Medium</SelectItem>
                 <SelectItem value="l">Large</SelectItem>
                 <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('logo-badge-shape')">Badge shape</Label>
+            <Select
+              :model-value="editLogoBadgeShape"
+              @update:model-value="editLogoBadgeShape = $event as string"
+            >
+              <SelectTrigger :id="inputId('logo-badge-shape')" class="max-w-xs" data-testid="logo-badge-shape-select">
+                <SelectValue placeholder="Select shape" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="r">Rounded</SelectItem>
+                <SelectItem value="p">Pill</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('logo-badge-background')">Badge background</Label>
+            <Select
+              :model-value="editLogoBadgeBackground"
+              @update:model-value="editLogoBadgeBackground = $event as string"
+            >
+              <SelectTrigger :id="inputId('logo-badge-background')" class="max-w-xs" data-testid="logo-badge-background-select">
+                <SelectValue placeholder="Select background" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="d">Default</SelectItem>
+                <SelectItem value="k">Dark</SelectItem>
+                <SelectItem value="t">Transparent</SelectItem>
+                <SelectItem value="n">None</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -739,6 +838,7 @@ function toggleExclude(key: string, checked: boolean) {
             <Label :for="inputId('backdrop-badge-style')">Badge style</Label>
             <Select
               :model-value="editBackdropBadgeStyle"
+              :disabled="editBackdropBadgeShape === 'p'"
               @update:model-value="editBackdropBadgeStyle = $event as string"
             >
               <SelectTrigger :id="inputId('backdrop-badge-style')" class="max-w-xs" data-testid="backdrop-badge-style-select">
@@ -749,6 +849,7 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="editBackdropBadgeShape === 'p'" class="text-xs text-muted-foreground">Pills always render horizontally.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('backdrop-label-style')">Label style</Label>
@@ -781,6 +882,38 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="m">Medium</SelectItem>
                 <SelectItem value="l">Large</SelectItem>
                 <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('backdrop-badge-shape')">Badge shape</Label>
+            <Select
+              :model-value="editBackdropBadgeShape"
+              @update:model-value="editBackdropBadgeShape = $event as string"
+            >
+              <SelectTrigger :id="inputId('backdrop-badge-shape')" class="max-w-xs" data-testid="backdrop-badge-shape-select">
+                <SelectValue placeholder="Select shape" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="r">Rounded</SelectItem>
+                <SelectItem value="p">Pill</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('backdrop-badge-background')">Badge background</Label>
+            <Select
+              :model-value="editBackdropBadgeBackground"
+              @update:model-value="editBackdropBadgeBackground = $event as string"
+            >
+              <SelectTrigger :id="inputId('backdrop-badge-background')" class="max-w-xs" data-testid="backdrop-badge-background-select">
+                <SelectValue placeholder="Select background" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="d">Default</SelectItem>
+                <SelectItem value="k">Dark</SelectItem>
+                <SelectItem value="t">Transparent</SelectItem>
+                <SelectItem value="n">None</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -898,6 +1031,7 @@ function toggleExclude(key: string, checked: boolean) {
             <Label :for="inputId('episode-badge-style')">Badge style</Label>
             <Select
               :model-value="editEpisodeBadgeStyle"
+              :disabled="editEpisodeBadgeShape === 'p'"
               @update:model-value="editEpisodeBadgeStyle = $event as string"
             >
               <SelectTrigger :id="inputId('episode-badge-style')" class="max-w-xs" data-testid="episode-badge-style-select">
@@ -908,6 +1042,7 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="editEpisodeBadgeShape === 'p'" class="text-xs text-muted-foreground">Pills always render horizontally.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('episode-label-style')">Label style</Label>
@@ -940,6 +1075,38 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="m">Medium</SelectItem>
                 <SelectItem value="l">Large</SelectItem>
                 <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('episode-badge-shape')">Badge shape</Label>
+            <Select
+              :model-value="editEpisodeBadgeShape"
+              @update:model-value="editEpisodeBadgeShape = $event as string"
+            >
+              <SelectTrigger :id="inputId('episode-badge-shape')" class="max-w-xs" data-testid="episode-badge-shape-select">
+                <SelectValue placeholder="Select shape" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="r">Rounded</SelectItem>
+                <SelectItem value="p">Pill</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('episode-badge-background')">Badge background</Label>
+            <Select
+              :model-value="editEpisodeBadgeBackground"
+              @update:model-value="editEpisodeBadgeBackground = $event as string"
+            >
+              <SelectTrigger :id="inputId('episode-badge-background')" class="max-w-xs" data-testid="episode-badge-background-select">
+                <SelectValue placeholder="Select background" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="d">Default</SelectItem>
+                <SelectItem value="k">Dark</SelectItem>
+                <SelectItem value="t">Transparent</SelectItem>
+                <SelectItem value="n">None</SelectItem>
               </SelectContent>
             </Select>
           </div>

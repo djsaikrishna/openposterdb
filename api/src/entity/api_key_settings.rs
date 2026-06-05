@@ -34,6 +34,14 @@ pub struct Model {
     pub episode_badge_direction: String,
     pub episode_blur: bool,
     pub ratings_exclude: String,
+    pub poster_badge_shape: String,
+    pub logo_badge_shape: String,
+    pub backdrop_badge_shape: String,
+    pub episode_badge_shape: String,
+    pub poster_badge_background: String,
+    pub logo_badge_background: String,
+    pub backdrop_badge_background: String,
+    pub episode_badge_background: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

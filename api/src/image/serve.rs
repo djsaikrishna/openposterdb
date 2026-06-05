@@ -10,7 +10,7 @@ use crate::cache::{self, MemCacheEntry};
 use crate::error::AppError;
 use crate::id::{self, IdType, MediaType, format_tmdb_id_value};
 use crate::image::generate;
-use crate::services::db::{BadgeDirection, BadgePosition, BadgeSize, BadgeStyle, ImageSize, LabelStyle, RenderSettings};
+use crate::services::db::{BadgeAppearance, BadgeDirection, BadgePosition, BadgeSize, BadgeStyle, ImageSize, LabelStyle, RenderSettings};
 use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMatch};
 use crate::services::lang::lang_base;
 use crate::services::ratings;
@@ -50,6 +50,7 @@ struct LbRenderParams {
     badge_style: BadgeStyle,
     label_style: LabelStyle,
     badge_size: BadgeSize,
+    appearance: BadgeAppearance,
 }
 
 impl LbRenderParams {
@@ -75,7 +76,11 @@ impl LbRenderParams {
             LogoBackdropKind::Logo => settings.logo_badge_size,
             LogoBackdropKind::Backdrop => settings.backdrop_badge_size,
         };
-        Self { position, badge_direction, badge_style, label_style, badge_size }
+        let appearance = match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_appearance(),
+            LogoBackdropKind::Backdrop => settings.backdrop_appearance(),
+        };
+        Self { position, badge_direction, badge_style, label_style, badge_size, appearance }
     }
 }
 
@@ -97,6 +102,16 @@ pub fn label_style_cache_suffix(style: &str) -> String {
 /// Returns a cache key suffix for badge direction.
 pub fn badge_direction_cache_suffix(dir: &str) -> String {
     format!(".d{dir}")
+}
+
+/// Returns a cache key suffix for badge shape.
+pub fn badge_shape_cache_suffix(shape: &str) -> String {
+    format!(".sh{shape}")
+}
+
+/// Returns a cache key suffix for badge background.
+pub fn badge_background_cache_suffix(background: &str) -> String {
+    format!(".bg{background}")
 }
 
 /// Resolve an optional image size, defaulting to Medium.
@@ -174,6 +189,14 @@ pub fn settings_cache_suffix_with_ratings(
         episode_position: _,
         episode_badge_direction: _,
         episode_blur: _,
+        poster_badge_shape: _,
+        logo_badge_shape: _,
+        backdrop_badge_shape: _,
+        episode_badge_shape: _,
+        poster_badge_background: _,
+        logo_badge_background: _,
+        backdrop_badge_background: _,
+        episode_badge_background: _,
     } = settings;
 
     let resolved_size = resolve_image_size(image_size);
@@ -183,37 +206,50 @@ pub fn settings_cache_suffix_with_ratings(
     match kind {
         cache::ImageType::Poster => {
             let ps = position_cache_suffix(settings.poster_position.as_str());
-            let bs = badge_style_cache_suffix(settings.poster_badge_style.as_str());
+            // Pills always render horizontally, so normalize the style token to
+            // match — keeps pill+vertical and pill+horizontal on one cache key.
+            let bs = badge_style_cache_suffix(settings.poster_badge_style.for_shape(settings.poster_badge_shape).as_str());
             let ls = label_style_cache_suffix(settings.poster_label_style.as_str());
             let bd = badge_direction_cache_suffix(settings.poster_badge_direction.as_str());
             let bsz = settings.poster_badge_size.cache_suffix();
+            let shp = badge_shape_cache_suffix(settings.poster_badge_shape.as_str());
+            let bgd = badge_background_cache_suffix(settings.poster_badge_background.as_str());
             // Split badges onto opposite sides — only tokenized when enabled, so
             // the default (no split) keeps existing cache keys unchanged.
             let split = if settings.poster_badge_split { ".x1" } else { "" };
-            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{split}{is_suffix}")
+            // Shape/background sit immediately after badge size (before the
+            // optional split token) so the v003 cache-key migration can insert
+            // their defaults with a single uniform rule across all image types.
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{split}{is_suffix}")
         }
         cache::ImageType::Logo => {
-            let bs = badge_style_cache_suffix(settings.logo_badge_style.as_str());
+            let bs = badge_style_cache_suffix(settings.logo_badge_style.for_shape(settings.logo_badge_shape).as_str());
             let ls = label_style_cache_suffix(settings.logo_label_style.as_str());
             let bsz = settings.logo_badge_size.cache_suffix();
-            format!("{rs}{bs}{ls}{bsz}{is_suffix}")
+            let shp = badge_shape_cache_suffix(settings.logo_badge_shape.as_str());
+            let bgd = badge_background_cache_suffix(settings.logo_badge_background.as_str());
+            format!("{rs}{bs}{ls}{bsz}{shp}{bgd}{is_suffix}")
         }
         cache::ImageType::Backdrop => {
             let ps = position_cache_suffix(settings.backdrop_position.as_str());
-            let bs = badge_style_cache_suffix(settings.backdrop_badge_style.as_str());
+            let bs = badge_style_cache_suffix(settings.backdrop_badge_style.for_shape(settings.backdrop_badge_shape).as_str());
             let ls = label_style_cache_suffix(settings.backdrop_label_style.as_str());
             let bd = badge_direction_cache_suffix(settings.backdrop_badge_direction.as_str());
             let bsz = settings.backdrop_badge_size.cache_suffix();
-            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{is_suffix}")
+            let shp = badge_shape_cache_suffix(settings.backdrop_badge_shape.as_str());
+            let bgd = badge_background_cache_suffix(settings.backdrop_badge_background.as_str());
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{is_suffix}")
         }
         cache::ImageType::Episode => {
             let ps = position_cache_suffix(settings.episode_position.as_str());
-            let bs = badge_style_cache_suffix(settings.episode_badge_style.as_str());
+            let bs = badge_style_cache_suffix(settings.episode_badge_style.for_shape(settings.episode_badge_shape).as_str());
             let ls = label_style_cache_suffix(settings.episode_label_style.as_str());
             let bd = badge_direction_cache_suffix(settings.episode_badge_direction.as_str());
             let bsz = settings.episode_badge_size.cache_suffix();
+            let shp = badge_shape_cache_suffix(settings.episode_badge_shape.as_str());
+            let bgd = badge_background_cache_suffix(settings.episode_badge_background.as_str());
             let blur = if settings.episode_blur { ".blur" } else { "" };
-            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{blur}{is_suffix}")
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{blur}{is_suffix}")
         }
     }
 }
@@ -1123,8 +1159,8 @@ fn trigger_logo_backdrop_refresh(
             ),
         };
         let bytes = match lb_kind {
-            LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), params.badge_style, params.label_style, state2.render_semaphore.clone(), target_width, badge_scale).await?,
-            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.image_quality, params.position, params.badge_style, params.label_style, params.badge_direction, state2.render_semaphore.clone(), target_width, badge_scale, params.badge_size).await?,
+            LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), params.badge_style, params.label_style, params.appearance, state2.render_semaphore.clone(), target_width, badge_scale).await?,
+            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.image_quality, params.position, params.badge_style, params.label_style, params.appearance, params.badge_direction, state2.render_semaphore.clone(), target_width, badge_scale, params.badge_size).await?,
         };
 
         Ok((bytes, cross_ids.release_date.clone(), image_type, cross_ids))
@@ -1177,6 +1213,7 @@ async fn generate_episode(
     let position = settings.episode_position;
     let badge_style = settings.episode_badge_style;
     let label_style = settings.episode_label_style;
+    let badge_appearance = settings.episode_appearance();
     let badge_direction = settings.episode_badge_direction;
     let episode_badge_size = settings.episode_badge_size;
     let blur = settings.episode_blur;
@@ -1185,7 +1222,7 @@ async fn generate_episode(
     let _permit = render_semaphore.acquire().await
         .map_err(|_| AppError::Other("render queue closed".into()))?;
     let rendered = tokio::task::spawn_blocking(move || {
-        generate::render_episode_sync(&image_bytes, &badges, &font, quality, position, badge_style, label_style, badge_direction, target_width, badge_scale, episode_badge_size, blur)
+        generate::render_episode_sync(&image_bytes, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, episode_badge_size, blur)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -1320,6 +1357,7 @@ async fn generate_poster_with_source(
         poster_position: settings.poster_position,
         badge_style: settings.poster_badge_style,
         label_style: settings.poster_label_style,
+        badge_appearance: settings.poster_appearance(),
         badge_direction: settings.poster_badge_direction,
         poster_badge_split: settings.poster_badge_split,
         render_semaphore: state.render_semaphore.clone(),
@@ -1853,6 +1891,7 @@ pub async fn handle_logo_backdrop_inner(
         neg_lang_key: String,
         type_badge_style: BadgeStyle,
         type_label_style: LabelStyle,
+        type_appearance: BadgeAppearance,
         type_position: BadgePosition,
         type_badge_direction: BadgeDirection,
         type_badge_size: BadgeSize,
@@ -1874,6 +1913,7 @@ pub async fn handle_logo_backdrop_inner(
         neg_lang_key,
         type_badge_style,
         type_label_style,
+        type_appearance: params.appearance,
         type_position: params.position,
         type_badge_direction: params.badge_direction,
         type_badge_size: params.badge_size,
@@ -1959,8 +1999,8 @@ pub async fn handle_logo_backdrop_inner(
                 ),
             };
             let bytes = match lb_kind {
-                LogoBackdropKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
-                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_position, ctx.type_badge_style, ctx.type_label_style, ctx.type_badge_direction, ctx.state.render_semaphore.clone(), target_width, badge_scale, ctx.type_badge_size).await?,
+                LogoBackdropKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
+                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_position, ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.type_badge_direction, ctx.state.render_semaphore.clone(), target_width, badge_scale, ctx.type_badge_size).await?,
             };
 
             let release_date = ctx.cross_ids.release_date.clone();
@@ -2279,6 +2319,41 @@ mod tests {
         let logo = settings_cache_suffix(&s, cache::ImageType::Logo, None);
         assert!(poster.contains(".sh"), "poster should use poster_badge_style");
         assert!(logo.contains(".sv"), "logo should use logo_badge_style");
+    }
+
+    #[test]
+    fn settings_cache_suffix_pill_normalizes_style_token() {
+        use crate::services::db::BadgeShape;
+        // Pills always render horizontally, so pill+vertical and pill+horizontal
+        // must collapse to the same cache key (no duplicate cache entries for
+        // byte-identical output). The rounded variants stay distinct.
+        let mut pill_v = RenderSettings::default();
+        pill_v.poster_badge_style = BadgeStyle::Vertical;
+        pill_v.poster_badge_shape = BadgeShape::Pill;
+        let mut pill_h = RenderSettings::default();
+        pill_h.poster_badge_style = BadgeStyle::Horizontal;
+        pill_h.poster_badge_shape = BadgeShape::Pill;
+        assert_eq!(
+            settings_cache_suffix(&pill_v, cache::ImageType::Poster, None),
+            settings_cache_suffix(&pill_h, cache::ImageType::Poster, None),
+            "pill+vertical and pill+horizontal should share a cache key",
+        );
+        // The configured vertical style is normalized away (no `.sv` token), and
+        // the pill shape suffix is present.
+        let suffix = settings_cache_suffix(&pill_v, cache::ImageType::Poster, None);
+        assert!(!suffix.contains(".sv"), "pill should not keep the vertical style token");
+        assert!(suffix.contains(".shp"), "pill shape suffix present");
+
+        // Rounded badges still honour the configured style.
+        let mut round_v = RenderSettings::default();
+        round_v.poster_badge_style = BadgeStyle::Vertical;
+        let mut round_h = RenderSettings::default();
+        round_h.poster_badge_style = BadgeStyle::Horizontal;
+        assert_ne!(
+            settings_cache_suffix(&round_v, cache::ImageType::Poster, None),
+            settings_cache_suffix(&round_h, cache::ImageType::Poster, None),
+            "rounded vertical and horizontal should stay distinct",
+        );
     }
 
     #[test]

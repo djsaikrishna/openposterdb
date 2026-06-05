@@ -11,7 +11,7 @@ use crate::handlers::auth::hash_api_key;
 use crate::image::serve;
 use crate::services::db;
 use crate::services::db::{
-    BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource,
+    BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource,
     RenderSettings,
 };
 use crate::AppState;
@@ -86,6 +86,14 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub badge_direction: Option<BadgeDirection>,
+    /// Badge corner shape: `r` (rounded), `p` (pill).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub badge_shape: Option<BadgeShape>,
+    /// Badge background: `d` (default), `k` (dark), `t` (transparent), `n` (none).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub badge_background: Option<BadgeBackground>,
     /// Badge anchor position: `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br`.
     #[serde(default)]
     #[param(value_type = Option<String>)]
@@ -118,6 +126,8 @@ impl ImageQuery {
             || self.label_style.is_some()
             || self.badge_size.is_some()
             || self.badge_direction.is_some()
+            || self.badge_shape.is_some()
+            || self.badge_background.is_some()
             || self.position.is_some()
             || self.image_source.is_some()
             || self.textless.is_some()
@@ -184,6 +194,14 @@ pub struct FreeKeySettingsResponse {
     pub episode_position: BadgePosition,
     pub episode_badge_direction: BadgeDirection,
     pub episode_blur: bool,
+    pub poster_badge_shape: BadgeShape,
+    pub logo_badge_shape: BadgeShape,
+    pub backdrop_badge_shape: BadgeShape,
+    pub episode_badge_shape: BadgeShape,
+    pub poster_badge_background: BadgeBackground,
+    pub logo_badge_background: BadgeBackground,
+    pub backdrop_badge_background: BadgeBackground,
+    pub episode_badge_background: BadgeBackground,
 }
 
 impl From<&RenderSettings> for FreeKeySettingsResponse {
@@ -218,6 +236,14 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             episode_position: s.episode_position,
             episode_badge_direction: s.episode_badge_direction,
             episode_blur: s.episode_blur,
+            poster_badge_shape: s.poster_badge_shape,
+            logo_badge_shape: s.logo_badge_shape,
+            backdrop_badge_shape: s.backdrop_badge_shape,
+            episode_badge_shape: s.episode_badge_shape,
+            poster_badge_background: s.poster_badge_background,
+            logo_badge_background: s.logo_badge_background,
+            backdrop_badge_background: s.backdrop_badge_background,
+            episode_badge_background: s.episode_badge_background,
         }
     }
 }
@@ -377,6 +403,22 @@ fn apply_query_overrides(
             cache::ImageType::Logo => s.logo_badge_size = size,
             cache::ImageType::Backdrop => s.backdrop_badge_size = size,
             cache::ImageType::Episode => s.episode_badge_size = size,
+        }
+    }
+    if let Some(shape) = query.badge_shape {
+        match kind {
+            cache::ImageType::Poster => s.poster_badge_shape = shape,
+            cache::ImageType::Logo => s.logo_badge_shape = shape,
+            cache::ImageType::Backdrop => s.backdrop_badge_shape = shape,
+            cache::ImageType::Episode => s.episode_badge_shape = shape,
+        }
+    }
+    if let Some(background) = query.badge_background {
+        match kind {
+            cache::ImageType::Poster => s.poster_badge_background = background,
+            cache::ImageType::Logo => s.logo_badge_background = background,
+            cache::ImageType::Backdrop => s.backdrop_badge_background = background,
+            cache::ImageType::Episode => s.episode_badge_background = background,
         }
     }
 
@@ -816,6 +858,8 @@ mod tests {
             label_style: None,
             badge_size: None,
             badge_direction: None,
+            badge_shape: None,
+            badge_background: None,
             position: None,
             image_source: None,
             textless: None,
