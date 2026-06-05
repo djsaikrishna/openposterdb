@@ -289,6 +289,14 @@ async function handleFetch() {
       </CollapsibleTrigger>
       <CollapsibleContent class="pt-3 space-y-3">
       <form class="flex flex-col gap-3" @submit.prevent="handleFetch">
+        <!--
+          The dynamic "default (resolved)" items are :key'd by their label so
+          reka-ui re-registers the option's text when it changes — on a per-type
+          switch or when the server defaults load after mount. Without this the
+          closed trigger keeps the stale text reka-ui cached when the item first
+          mounted (it only snapshots textContent once), so the summary shown on
+          the trigger would lag the actual default for the selected image type.
+        -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Select v-model="imageSize">
             <SelectTrigger id="free-image-size" aria-label="Image size" class="bg-background">
@@ -305,7 +313,7 @@ async function handleFetch() {
               <SelectValue placeholder="Language: any" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="any">{{ langDefaultLabel }}</SelectItem>
+              <SelectItem value="any" :key="langDefaultLabel">{{ langDefaultLabel }}</SelectItem>
               <SelectItem v-for="l in LANGUAGES" :key="l.code" :value="l.code">
                 {{ l.code }} - {{ l.name }}
               </SelectItem>
@@ -316,7 +324,7 @@ async function handleFetch() {
               <SelectValue placeholder="Max badges: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">{{ ratingsLimitDefaultLabel }}</SelectItem>
+              <SelectItem value="default" :key="ratingsLimitDefaultLabel">{{ ratingsLimitDefaultLabel }}</SelectItem>
               <SelectItem v-for="n in 11" :key="n - 1" :value="String(n - 1)">
                 {{ n - 1 }} {{ n - 1 === 1 ? 'badge' : 'badges' }}
               </SelectItem>
@@ -327,7 +335,7 @@ async function handleFetch() {
               <SelectValue placeholder="Badge style: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">{{ badgeStyleDefaultLabel }}</SelectItem>
+              <SelectItem value="default" :key="badgeStyleDefaultLabel">{{ badgeStyleDefaultLabel }}</SelectItem>
               <SelectItem value="h">Horizontal</SelectItem>
               <SelectItem value="v">Vertical</SelectItem>
             </SelectContent>
@@ -337,7 +345,7 @@ async function handleFetch() {
               <SelectValue placeholder="Label style: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">{{ labelStyleDefaultLabel }}</SelectItem>
+              <SelectItem value="default" :key="labelStyleDefaultLabel">{{ labelStyleDefaultLabel }}</SelectItem>
               <SelectItem value="t">Text</SelectItem>
               <SelectItem value="i">Icon</SelectItem>
               <SelectItem value="o">Official</SelectItem>
@@ -348,7 +356,7 @@ async function handleFetch() {
               <SelectValue placeholder="Badge size: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">{{ badgeSizeDefaultLabel }}</SelectItem>
+              <SelectItem value="default" :key="badgeSizeDefaultLabel">{{ badgeSizeDefaultLabel }}</SelectItem>
               <SelectItem value="xs">Extra Small</SelectItem>
               <SelectItem value="s">Small</SelectItem>
               <SelectItem value="m">Medium</SelectItem>
@@ -361,7 +369,7 @@ async function handleFetch() {
               <SelectValue placeholder="Source: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">{{ imageSourceDefaultLabel }}</SelectItem>
+              <SelectItem value="default" :key="imageSourceDefaultLabel">{{ imageSourceDefaultLabel }}</SelectItem>
               <SelectItem value="t">TMDB</SelectItem>
               <SelectItem value="f">Fanart.tv</SelectItem>
             </SelectContent>
@@ -372,7 +380,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Textless: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">{{ textlessDefaultLabel }}</SelectItem>
+                <SelectItem value="default" :key="textlessDefaultLabel">{{ textlessDefaultLabel }}</SelectItem>
                 <SelectItem value="true">Yes</SelectItem>
                 <SelectItem value="false">No</SelectItem>
               </SelectContent>
@@ -382,7 +390,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Split badges: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">{{ splitDefaultLabel }}</SelectItem>
+                <SelectItem value="default" :key="splitDefaultLabel">{{ splitDefaultLabel }}</SelectItem>
                 <SelectItem value="true">Yes</SelectItem>
                 <SelectItem value="false">No</SelectItem>
               </SelectContent>
@@ -394,7 +402,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Position: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">{{ positionDefaultLabel }}</SelectItem>
+                <SelectItem value="default" :key="positionDefaultLabel">{{ positionDefaultLabel }}</SelectItem>
                 <SelectItem value="bc">Bottom Center</SelectItem>
                 <SelectItem value="tc">Top Center</SelectItem>
                 <SelectItem value="l">Left</SelectItem>
@@ -410,7 +418,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Direction: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">{{ badgeDirectionDefaultLabel }}</SelectItem>
+                <SelectItem value="default" :key="badgeDirectionDefaultLabel">{{ badgeDirectionDefaultLabel }}</SelectItem>
                 <SelectItem value="h">Horizontal</SelectItem>
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
@@ -422,7 +430,7 @@ async function handleFetch() {
                 <SelectValue placeholder="Blur: default" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">{{ blurDefaultLabel }}</SelectItem>
+                <SelectItem value="default" :key="blurDefaultLabel">{{ blurDefaultLabel }}</SelectItem>
                 <SelectItem value="true">Yes</SelectItem>
                 <SelectItem value="false">No</SelectItem>
               </SelectContent>
