@@ -311,7 +311,7 @@ async function handleFetch() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="default">{{ ratingsLimitDefaultLabel }}</SelectItem>
-              <SelectItem v-for="n in 9" :key="n - 1" :value="String(n - 1)">
+              <SelectItem v-for="n in 11" :key="n - 1" :value="String(n - 1)">
                 {{ n - 1 }} {{ n - 1 === 1 ? 'badge' : 'badges' }}
               </SelectItem>
             </SelectContent>
