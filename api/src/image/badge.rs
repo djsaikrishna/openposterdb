@@ -105,6 +105,9 @@ const BASE_BADGE_RADIUS: u32 = 10;
 /// crowd the fully-rounded caps. Applied to the long-axis ends only (left/right
 /// for horizontal badges, top/bottom for vertical).
 const BASE_PILL_PADDING: u32 = 10;
+/// Extra height added to horizontal pill badges for a little more top/bottom
+/// breathing room around the content.
+const BASE_PILL_PADDING_V: u32 = 6;
 const BASE_FONT_SIZE: f32 = 34.0;
 const BASE_LABEL_FONT_SIZE: f32 = 26.0;
 const BASE_ICON_HEIGHT: u32 = 48;
@@ -164,6 +167,7 @@ struct ScaledDims {
     badge_value_padding_h: u32,
     badge_radius: u32,
     pill_padding: u32,
+    pill_padding_v: u32,
     icon_height: u32,
 }
 
@@ -176,6 +180,7 @@ impl ScaledDims {
             badge_value_padding_h: (BASE_BADGE_VALUE_PADDING_H as f32 * badge_scale).round() as u32,
             badge_radius: (BASE_BADGE_RADIUS as f32 * badge_scale).round() as u32,
             pill_padding: (BASE_PILL_PADDING as f32 * badge_scale).round() as u32,
+            pill_padding_v: (BASE_PILL_PADDING_V as f32 * badge_scale).round() as u32,
             icon_height: (BASE_ICON_HEIGHT as f32 * badge_scale).round() as u32,
         }
     }
@@ -289,26 +294,28 @@ fn render_badge_inner(
     let value_width = uniform_value_width.unwrap_or_else(|| text_width(value, &fonts.scaled));
     let label_pad = if use_icon { dims.badge_padding_h } else { dims.text_label_padding_h };
     // Pills get extra padding at their rounded left/right ends so the content
-    // doesn't crowd the fully-rounded caps. Rounded badges add nothing.
-    let pill_pad = match appearance.shape {
-        BadgeShape::Pill => dims.pill_padding,
-        BadgeShape::Rounded => 0,
+    // doesn't crowd the fully-rounded caps, plus a little extra height for
+    // top/bottom breathing room. Rounded badges add nothing.
+    let (pill_pad, pill_pad_v) = match appearance.shape {
+        BadgeShape::Pill => (dims.pill_padding, dims.pill_padding_v),
+        BadgeShape::Rounded => (0, 0),
     };
+    let badge_h = dims.badge_height + pill_pad_v;
 
     let value_x = pill_pad + label_width + label_pad * 2;
     let total_width = value_x + value_width + dims.badge_value_padding_h + dims.badge_value_padding_h / 2 + 2 + pill_pad;
-    let mut img = RgbaImage::new(total_width, dims.badge_height);
+    let mut img = RgbaImage::new(total_width, badge_h);
 
     // Draw the label + value backgrounds (unless the badge has no background).
     // Both sections are filled as plain rects, then the four outer corners are
     // rounded — leaving the inner join square for a clean seam at any radius.
     if let Some((label_bg, value_bg)) = section_colors(appearance.background, label_style, &badge.source) {
-        draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(value_x, dims.badge_height), label_bg);
-        draw_filled_rect_mut(&mut img, Rect::at(value_x as i32, 0).of_size(total_width - value_x, dims.badge_height), value_bg);
-        round_corners(&mut img, corner_radius(appearance.shape, dims.badge_height, dims.badge_radius));
+        draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(value_x, badge_h), label_bg);
+        draw_filled_rect_mut(&mut img, Rect::at(value_x as i32, 0).of_size(total_width - value_x, badge_h), value_bg);
+        round_corners(&mut img, corner_radius(appearance.shape, badge_h, dims.badge_radius));
     }
 
-    let shadow = shadow_offset(appearance.background, dims.badge_height);
+    let shadow = shadow_offset(appearance.background, badge_h);
 
     // Draw label (icon or text, centered within uniform label area)
     if use_icon {
@@ -319,12 +326,12 @@ fn render_badge_inner(
             imageops::resize(icon, icon_w, icon_h, imageops::FilterType::Lanczos3)
         };
         let ix = pill_pad + label_pad + (label_width.saturating_sub(icon_w)) / 2;
-        let iy = (dims.badge_height.saturating_sub(icon_h)) / 2;
+        let iy = (badge_h.saturating_sub(icon_h)) / 2;
         overlay_icon_shadowed(&mut img, &scaled_icon, ix as i64, iy as i64, shadow);
     } else {
         let actual_label_width = text_width(label, &fonts.label_scaled);
         let label_x = pill_pad + label_pad + (label_width.saturating_sub(actual_label_width)) / 2;
-        let label_y = (dims.badge_height as i32 - fonts.label_scale.x as i32) / 2;
+        let label_y = (badge_h as i32 - fonts.label_scale.x as i32) / 2;
         draw_text_shadowed(
             &mut img,
             Rgba([255, 255, 255, 255]),
@@ -340,7 +347,7 @@ fn render_badge_inner(
     // Draw value text (centered within uniform value area)
     let actual_value_width = text_width(value, &fonts.scaled);
     let value_text_x = value_x + dims.badge_value_padding_h + (value_width.saturating_sub(actual_value_width)) / 2;
-    let value_y = (dims.badge_height as i32 - fonts.scale.x as i32) / 2;
+    let value_y = (badge_h as i32 - fonts.scale.x as i32) / 2;
     draw_text_shadowed(
         &mut img,
         Rgba([255, 255, 255, 255]),
@@ -687,13 +694,17 @@ mod tests {
         for shape in ALL_SHAPES {
             for background in ALL_BACKGROUNDS {
                 let appearance = BadgeAppearance { shape, background };
-                // Horizontal: appearance must not change the badge height.
+                // Horizontal badge height: base, plus the pill's extra vertical padding.
+                let expected_h = match shape {
+                    BadgeShape::Pill => BASE_BADGE_HEIGHT + BASE_PILL_PADDING_V,
+                    BadgeShape::Rounded => BASE_BADGE_HEIGHT,
+                };
                 let h = render_badge_appearance(&badge, &font, LabelStyle::Text, appearance);
-                assert_eq!(h.height(), BASE_BADGE_HEIGHT, "h height for {shape:?}/{background:?}");
+                assert_eq!(h.height(), expected_h, "h height for {shape:?}/{background:?}");
                 assert!(h.width() > 0, "h width for {shape:?}/{background:?}");
                 // Icon labels exercise the icon/shadow path.
                 let hi = render_badge_appearance(&badge, &font, LabelStyle::Official, appearance);
-                assert_eq!(hi.height(), BASE_BADGE_HEIGHT, "h-icon height for {shape:?}/{background:?}");
+                assert_eq!(hi.height(), expected_h, "h-icon height for {shape:?}/{background:?}");
                 // Vertical: appearance must not change the badge width.
                 let v = render_vertical_badge(&badge, &font, LabelStyle::Text, appearance, 1.0);
                 assert_eq!(v.width(), BASE_VERT_BADGE_WIDTH, "v width for {shape:?}/{background:?}");

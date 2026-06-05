@@ -128,7 +128,7 @@ GET /{api_key}/isValid
 - `?badge_style={h|v|d}`: badge layout — `h` (horizontal), `v` (vertical), `d` (default)
 - `?label_style={t|i|o}`: label rendering — `t` (text), `i` (icon), `o` (official provider logos)
 - `?badge_size={xs|s|m|l|xl}`: badge scale — extra-small, small, medium, large, extra-large
-- `?badge_shape={r|p}`: badge corner shape — `r` (rounded, default), `p` (pill, fully rounded ends)
+- `?badge_shape={r|p}`: badge corner shape — `r` (rounded, default), `p` (pill, fully rounded ends). Pills always render as a horizontal icon/label-left, value-right lozenge, even on image types whose default style is vertical (logos, backdrops, episodes)
 - `?badge_background={d|k|t|n}`: badge background — `d` (default: source-coloured label + dark value), `k` (dark: uniformly dark), `t` (transparent: semi-transparent so the artwork shows through), `n` (none: no background, label/value drawn directly on the image with a drop shadow)
 - `?image_source={t|f}`: image source — `t` (TMDB, default), `f` (Fanart.tv). Applies to all image types. The non-selected source is used as fallback
 - `?badge_direction={d|h|v}`: badge stacking direction — `d` (default), `h` (horizontal), `v` (vertical). Applies to poster, backdrop, and episode endpoints

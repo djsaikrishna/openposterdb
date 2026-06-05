@@ -278,6 +278,9 @@ pub fn render_poster_sync(
     badge_size: BadgeSize,
     poster_badge_split: bool,
 ) -> Result<Vec<u8>, AppError> {
+    // A pill is a horizontal lozenge (icon/label left, value right) — never a
+    // vertical stacked badge, even when the configured style is vertical.
+    let badge_style = if badge_appearance.is_pill() { BadgeStyle::Horizontal } else { badge_style };
     let base = load_image_with_limits(poster_bytes)?;
 
     let base = if base.width() != target_width {
@@ -364,6 +367,9 @@ pub fn render_logo_sync(
     target_width: u32,
     badge_scale: f32,
 ) -> Result<Vec<u8>, AppError> {
+    // A pill is a horizontal lozenge (icon/label left, value right) — never a
+    // vertical stacked badge, even when the configured style is vertical.
+    let badge_style = if badge_appearance.is_pill() { BadgeStyle::Horizontal } else { badge_style };
     let base = load_image_with_limits(logo_bytes)?;
 
     let base = if base.width() != target_width {
@@ -547,6 +553,9 @@ pub fn render_backdrop_sync(
     badge_scale: f32,
     _badge_size: BadgeSize,
 ) -> Result<Vec<u8>, AppError> {
+    // A pill is a horizontal lozenge (icon/label left, value right) — never a
+    // vertical stacked badge, even when the configured style is vertical.
+    let badge_style = if badge_appearance.is_pill() { BadgeStyle::Horizontal } else { badge_style };
     let base = load_image_with_limits(backdrop_bytes)?;
 
     let base = if base.width() != target_width {
@@ -631,6 +640,9 @@ pub fn render_episode_sync(
     badge_size: BadgeSize,
     blur: bool,
 ) -> Result<Vec<u8>, AppError> {
+    // A pill is a horizontal lozenge (icon/label left, value right) — never a
+    // vertical stacked badge, even when the configured style is vertical.
+    let badge_style = if badge_appearance.is_pill() { BadgeStyle::Horizontal } else { badge_style };
     let base = image::load_from_memory(image_bytes)
         .map_err(AppError::Image)?;
 
@@ -799,6 +811,32 @@ mod tests {
         let result = render_logo_sync(&png, &badges, &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
+    }
+
+    #[test]
+    fn pill_renders_horizontally_regardless_of_style() {
+        use crate::services::db::{BadgeBackground, BadgeShape};
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(400, 100);
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
+            RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
+        ];
+        let pill = BadgeAppearance { shape: BadgeShape::Pill, background: BadgeBackground::Default };
+        let rounded = BadgeAppearance::default();
+
+        // A pill ignores the vertical style and always renders horizontally, so
+        // vertical+pill and horizontal+pill produce identical output.
+        let v_pill = render_logo_sync(&png, &badges, &font, BadgeStyle::Vertical, LabelStyle::Official, pill, 500, 1.0).unwrap();
+        let h_pill = render_logo_sync(&png, &badges, &font, BadgeStyle::Horizontal, LabelStyle::Official, pill, 500, 1.0).unwrap();
+        assert_eq!(v_pill, h_pill, "pill should render horizontally even when the style is vertical");
+
+        // Rounded badges still honour the style, so the two layouts differ.
+        let v_round = render_logo_sync(&png, &badges, &font, BadgeStyle::Vertical, LabelStyle::Official, rounded, 500, 1.0).unwrap();
+        let h_round = render_logo_sync(&png, &badges, &font, BadgeStyle::Horizontal, LabelStyle::Official, rounded, 500, 1.0).unwrap();
+        assert_ne!(v_round, h_round, "rounded badges should still differ between vertical and horizontal styles");
     }
 
     #[test]

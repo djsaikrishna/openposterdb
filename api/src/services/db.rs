@@ -290,6 +290,15 @@ impl Default for BadgeAppearance {
     }
 }
 
+impl BadgeAppearance {
+    /// A pill is a horizontal lozenge (icon/label left, value right). Vertical
+    /// stacked pills look wrong, so callers render pills horizontally regardless
+    /// of the configured badge style.
+    pub fn is_pill(self) -> bool {
+        matches!(self.shape, BadgeShape::Pill)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageSource {
     Tmdb,
