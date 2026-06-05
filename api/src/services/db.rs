@@ -98,6 +98,18 @@ impl BadgeStyle {
             Self::Horizontal
         }
     }
+
+    /// The effective style once the badge shape is applied. A pill always renders
+    /// as a horizontal lozenge, so its style is normalized to `Horizontal`
+    /// regardless of the configured value. Both the renderer and the cache key
+    /// go through this so pill+vertical and pill+horizontal don't produce two
+    /// cache entries (or two renders) for byte-identical output.
+    pub fn for_shape(self, shape: BadgeShape) -> Self {
+        match shape {
+            BadgeShape::Pill => Self::Horizontal,
+            BadgeShape::Rounded => self,
+        }
+    }
 }
 
 impl_str_enum!(BadgeStyle);
@@ -287,15 +299,6 @@ impl Default for BadgeAppearance {
             shape: BadgeShape::Rounded,
             background: BadgeBackground::Default,
         }
-    }
-}
-
-impl BadgeAppearance {
-    /// A pill is a horizontal lozenge (icon/label left, value right). Vertical
-    /// stacked pills look wrong, so callers render pills horizontally regardless
-    /// of the configured badge style.
-    pub fn is_pill(self) -> bool {
-        matches!(self.shape, BadgeShape::Pill)
     }
 }
 

@@ -576,6 +576,7 @@ function toggleExclude(key: string, checked: boolean) {
             <Label :for="inputId('poster-badge-style')">Badge style</Label>
             <Select
               :model-value="editPosterBadgeStyle"
+              :disabled="editPosterBadgeShape === 'p'"
               @update:model-value="editPosterBadgeStyle = $event as string"
             >
               <SelectTrigger :id="inputId('poster-badge-style')" class="max-w-xs" data-testid="poster-badge-style-select">
@@ -587,6 +588,7 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="editPosterBadgeShape === 'p'" class="text-xs text-muted-foreground">Pills always render horizontally.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('poster-label-style')">Label style</Label>
@@ -717,6 +719,7 @@ function toggleExclude(key: string, checked: boolean) {
             <Label :for="inputId('logo-badge-style')">Badge style</Label>
             <Select
               :model-value="editLogoBadgeStyle"
+              :disabled="editLogoBadgeShape === 'p'"
               @update:model-value="editLogoBadgeStyle = $event as string"
             >
               <SelectTrigger :id="inputId('logo-badge-style')" class="max-w-xs" data-testid="logo-badge-style-select">
@@ -727,6 +730,7 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="editLogoBadgeShape === 'p'" class="text-xs text-muted-foreground">Pills always render horizontally.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('logo-label-style')">Label style</Label>
@@ -834,6 +838,7 @@ function toggleExclude(key: string, checked: boolean) {
             <Label :for="inputId('backdrop-badge-style')">Badge style</Label>
             <Select
               :model-value="editBackdropBadgeStyle"
+              :disabled="editBackdropBadgeShape === 'p'"
               @update:model-value="editBackdropBadgeStyle = $event as string"
             >
               <SelectTrigger :id="inputId('backdrop-badge-style')" class="max-w-xs" data-testid="backdrop-badge-style-select">
@@ -844,6 +849,7 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="editBackdropBadgeShape === 'p'" class="text-xs text-muted-foreground">Pills always render horizontally.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('backdrop-label-style')">Label style</Label>
@@ -1025,6 +1031,7 @@ function toggleExclude(key: string, checked: boolean) {
             <Label :for="inputId('episode-badge-style')">Badge style</Label>
             <Select
               :model-value="editEpisodeBadgeStyle"
+              :disabled="editEpisodeBadgeShape === 'p'"
               @update:model-value="editEpisodeBadgeStyle = $event as string"
             >
               <SelectTrigger :id="inputId('episode-badge-style')" class="max-w-xs" data-testid="episode-badge-style-select">
@@ -1035,6 +1042,7 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="editEpisodeBadgeShape === 'p'" class="text-xs text-muted-foreground">Pills always render horizontally.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('episode-label-style')">Label style</Label>

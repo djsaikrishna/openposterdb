@@ -206,7 +206,9 @@ pub fn settings_cache_suffix_with_ratings(
     match kind {
         cache::ImageType::Poster => {
             let ps = position_cache_suffix(settings.poster_position.as_str());
-            let bs = badge_style_cache_suffix(settings.poster_badge_style.as_str());
+            // Pills always render horizontally, so normalize the style token to
+            // match — keeps pill+vertical and pill+horizontal on one cache key.
+            let bs = badge_style_cache_suffix(settings.poster_badge_style.for_shape(settings.poster_badge_shape).as_str());
             let ls = label_style_cache_suffix(settings.poster_label_style.as_str());
             let bd = badge_direction_cache_suffix(settings.poster_badge_direction.as_str());
             let bsz = settings.poster_badge_size.cache_suffix();
@@ -221,7 +223,7 @@ pub fn settings_cache_suffix_with_ratings(
             format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{split}{is_suffix}")
         }
         cache::ImageType::Logo => {
-            let bs = badge_style_cache_suffix(settings.logo_badge_style.as_str());
+            let bs = badge_style_cache_suffix(settings.logo_badge_style.for_shape(settings.logo_badge_shape).as_str());
             let ls = label_style_cache_suffix(settings.logo_label_style.as_str());
             let bsz = settings.logo_badge_size.cache_suffix();
             let shp = badge_shape_cache_suffix(settings.logo_badge_shape.as_str());
@@ -230,7 +232,7 @@ pub fn settings_cache_suffix_with_ratings(
         }
         cache::ImageType::Backdrop => {
             let ps = position_cache_suffix(settings.backdrop_position.as_str());
-            let bs = badge_style_cache_suffix(settings.backdrop_badge_style.as_str());
+            let bs = badge_style_cache_suffix(settings.backdrop_badge_style.for_shape(settings.backdrop_badge_shape).as_str());
             let ls = label_style_cache_suffix(settings.backdrop_label_style.as_str());
             let bd = badge_direction_cache_suffix(settings.backdrop_badge_direction.as_str());
             let bsz = settings.backdrop_badge_size.cache_suffix();
@@ -240,7 +242,7 @@ pub fn settings_cache_suffix_with_ratings(
         }
         cache::ImageType::Episode => {
             let ps = position_cache_suffix(settings.episode_position.as_str());
-            let bs = badge_style_cache_suffix(settings.episode_badge_style.as_str());
+            let bs = badge_style_cache_suffix(settings.episode_badge_style.for_shape(settings.episode_badge_shape).as_str());
             let ls = label_style_cache_suffix(settings.episode_label_style.as_str());
             let bd = badge_direction_cache_suffix(settings.episode_badge_direction.as_str());
             let bsz = settings.episode_badge_size.cache_suffix();
@@ -2317,6 +2319,41 @@ mod tests {
         let logo = settings_cache_suffix(&s, cache::ImageType::Logo, None);
         assert!(poster.contains(".sh"), "poster should use poster_badge_style");
         assert!(logo.contains(".sv"), "logo should use logo_badge_style");
+    }
+
+    #[test]
+    fn settings_cache_suffix_pill_normalizes_style_token() {
+        use crate::services::db::BadgeShape;
+        // Pills always render horizontally, so pill+vertical and pill+horizontal
+        // must collapse to the same cache key (no duplicate cache entries for
+        // byte-identical output). The rounded variants stay distinct.
+        let mut pill_v = RenderSettings::default();
+        pill_v.poster_badge_style = BadgeStyle::Vertical;
+        pill_v.poster_badge_shape = BadgeShape::Pill;
+        let mut pill_h = RenderSettings::default();
+        pill_h.poster_badge_style = BadgeStyle::Horizontal;
+        pill_h.poster_badge_shape = BadgeShape::Pill;
+        assert_eq!(
+            settings_cache_suffix(&pill_v, cache::ImageType::Poster, None),
+            settings_cache_suffix(&pill_h, cache::ImageType::Poster, None),
+            "pill+vertical and pill+horizontal should share a cache key",
+        );
+        // The configured vertical style is normalized away (no `.sv` token), and
+        // the pill shape suffix is present.
+        let suffix = settings_cache_suffix(&pill_v, cache::ImageType::Poster, None);
+        assert!(!suffix.contains(".sv"), "pill should not keep the vertical style token");
+        assert!(suffix.contains(".shp"), "pill shape suffix present");
+
+        // Rounded badges still honour the configured style.
+        let mut round_v = RenderSettings::default();
+        round_v.poster_badge_style = BadgeStyle::Vertical;
+        let mut round_h = RenderSettings::default();
+        round_h.poster_badge_style = BadgeStyle::Horizontal;
+        assert_ne!(
+            settings_cache_suffix(&round_v, cache::ImageType::Poster, None),
+            settings_cache_suffix(&round_h, cache::ImageType::Poster, None),
+            "rounded vertical and horizontal should stay distinct",
+        );
     }
 
     #[test]

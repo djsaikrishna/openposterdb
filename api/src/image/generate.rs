@@ -280,7 +280,7 @@ pub fn render_poster_sync(
 ) -> Result<Vec<u8>, AppError> {
     // A pill is a horizontal lozenge (icon/label left, value right) — never a
     // vertical stacked badge, even when the configured style is vertical.
-    let badge_style = if badge_appearance.is_pill() { BadgeStyle::Horizontal } else { badge_style };
+    let badge_style = badge_style.for_shape(badge_appearance.shape);
     let base = load_image_with_limits(poster_bytes)?;
 
     let base = if base.width() != target_width {
@@ -369,7 +369,7 @@ pub fn render_logo_sync(
 ) -> Result<Vec<u8>, AppError> {
     // A pill is a horizontal lozenge (icon/label left, value right) — never a
     // vertical stacked badge, even when the configured style is vertical.
-    let badge_style = if badge_appearance.is_pill() { BadgeStyle::Horizontal } else { badge_style };
+    let badge_style = badge_style.for_shape(badge_appearance.shape);
     let base = load_image_with_limits(logo_bytes)?;
 
     let base = if base.width() != target_width {
@@ -555,7 +555,7 @@ pub fn render_backdrop_sync(
 ) -> Result<Vec<u8>, AppError> {
     // A pill is a horizontal lozenge (icon/label left, value right) — never a
     // vertical stacked badge, even when the configured style is vertical.
-    let badge_style = if badge_appearance.is_pill() { BadgeStyle::Horizontal } else { badge_style };
+    let badge_style = badge_style.for_shape(badge_appearance.shape);
     let base = load_image_with_limits(backdrop_bytes)?;
 
     let base = if base.width() != target_width {
@@ -642,7 +642,7 @@ pub fn render_episode_sync(
 ) -> Result<Vec<u8>, AppError> {
     // A pill is a horizontal lozenge (icon/label left, value right) — never a
     // vertical stacked badge, even when the configured style is vertical.
-    let badge_style = if badge_appearance.is_pill() { BadgeStyle::Horizontal } else { badge_style };
+    let badge_style = badge_style.for_shape(badge_appearance.shape);
     let base = image::load_from_memory(image_bytes)
         .map_err(AppError::Image)?;
 

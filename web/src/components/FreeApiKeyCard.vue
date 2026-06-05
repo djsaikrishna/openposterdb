@@ -160,6 +160,11 @@ const badgeStyleDefaultLabel = computed(() => annotate('Badge style', typeDefaul
 const labelStyleDefaultLabel = computed(() => annotate('Label style', typeDefaults.value?.label_style, LABEL_STYLE_LABELS))
 const badgeSizeDefaultLabel = computed(() => annotate('Badge size', typeDefaults.value?.badge_size, BADGE_SIZE_LABELS))
 const badgeShapeDefaultLabel = computed(() => annotate('Badge shape', typeDefaults.value?.badge_shape, BADGE_SHAPE_LABELS))
+// Pills always render horizontally, so the badge style choice has no effect.
+// Covers both an explicit pill choice and 'default' resolving to a pill server default.
+const badgeShapeIsPill = computed(() =>
+  badgeShape.value === 'p' || (badgeShape.value === 'default' && typeDefaults.value?.badge_shape === 'p'),
+)
 const badgeBackgroundDefaultLabel = computed(() => annotate('Background', typeDefaults.value?.badge_background, BADGE_BACKGROUND_LABELS))
 const imageSourceDefaultLabel = computed(() => annotate('Source', defaults.value?.image_source, IMAGE_SOURCE_LABELS))
 const positionDefaultLabel = computed(() => annotate('Position', typeDefaults.value?.position, POSITION_LABELS))
@@ -324,7 +329,7 @@ async function handleFetch() {
               </SelectItem>
             </SelectContent>
           </Select>
-          <Select v-model="badgeStyle">
+          <Select v-model="badgeStyle" :disabled="badgeShapeIsPill">
             <SelectTrigger id="free-badge-style" aria-label="Badge style" class="bg-background">
               <SelectValue placeholder="Badge style: default" />
             </SelectTrigger>
