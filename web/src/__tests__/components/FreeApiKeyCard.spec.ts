@@ -145,6 +145,20 @@ describe('FreeApiKeyCard', () => {
     expect(wrapper.text()).toContain('Free API Key Available')
   })
 
+  it('offers ratings-limit options up to 10 badges (one per rating source)', () => {
+    const wrapper = mountCard(true)
+    const ratingsSelect = wrapper
+      .findAllComponents(SelectStub)
+      .find((s) => s.find('#free-ratings-limit').exists())
+    expect(ratingsSelect).toBeTruthy()
+    const text = ratingsSelect!.text()
+    expect(text).toContain('1 badge')
+    expect(text).toContain('9 badges')
+    expect(text).toContain('10 badges')
+    // 10 is the backend max (validate_ratings_limit allows 0–10); don't offer more.
+    expect(text).not.toContain('11 badges')
+  })
+
   it('curlExample uses .jpg for poster and .png for logo', async () => {
     const wrapper = mountCard(true)
     expect(findCurlCode(wrapper).text()).toContain('.jpg')
