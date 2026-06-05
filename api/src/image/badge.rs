@@ -101,6 +101,10 @@ const BASE_BADGE_PADDING_H: u32 = 14;
 const BASE_TEXT_LABEL_PADDING_H: u32 = 8;
 const BASE_BADGE_VALUE_PADDING_H: u32 = 10;
 const BASE_BADGE_RADIUS: u32 = 10;
+/// Extra padding added at a pill badge's rounded ends so the text/icons don't
+/// crowd the fully-rounded caps. Applied to the long-axis ends only (left/right
+/// for horizontal badges, top/bottom for vertical).
+const BASE_PILL_PADDING: u32 = 10;
 const BASE_FONT_SIZE: f32 = 34.0;
 const BASE_LABEL_FONT_SIZE: f32 = 26.0;
 const BASE_ICON_HEIGHT: u32 = 48;
@@ -159,6 +163,7 @@ struct ScaledDims {
     text_label_padding_h: u32,
     badge_value_padding_h: u32,
     badge_radius: u32,
+    pill_padding: u32,
     icon_height: u32,
 }
 
@@ -170,6 +175,7 @@ impl ScaledDims {
             text_label_padding_h: (BASE_TEXT_LABEL_PADDING_H as f32 * badge_scale).round() as u32,
             badge_value_padding_h: (BASE_BADGE_VALUE_PADDING_H as f32 * badge_scale).round() as u32,
             badge_radius: (BASE_BADGE_RADIUS as f32 * badge_scale).round() as u32,
+            pill_padding: (BASE_PILL_PADDING as f32 * badge_scale).round() as u32,
             icon_height: (BASE_ICON_HEIGHT as f32 * badge_scale).round() as u32,
         }
     }
@@ -282,9 +288,15 @@ fn render_badge_inner(
     };
     let value_width = uniform_value_width.unwrap_or_else(|| text_width(value, &fonts.scaled));
     let label_pad = if use_icon { dims.badge_padding_h } else { dims.text_label_padding_h };
-    let total_width = label_width + value_width + label_pad * 2 + dims.badge_value_padding_h + dims.badge_value_padding_h / 2 + 2;
+    // Pills get extra padding at their rounded left/right ends so the content
+    // doesn't crowd the fully-rounded caps. Rounded badges add nothing.
+    let pill_pad = match appearance.shape {
+        BadgeShape::Pill => dims.pill_padding,
+        BadgeShape::Rounded => 0,
+    };
 
-    let value_x = label_width + label_pad * 2;
+    let value_x = pill_pad + label_width + label_pad * 2;
+    let total_width = value_x + value_width + dims.badge_value_padding_h + dims.badge_value_padding_h / 2 + 2 + pill_pad;
     let mut img = RgbaImage::new(total_width, dims.badge_height);
 
     // Draw the label + value backgrounds (unless the badge has no background).
@@ -306,12 +318,12 @@ fn render_badge_inner(
         } else {
             imageops::resize(icon, icon_w, icon_h, imageops::FilterType::Lanczos3)
         };
-        let ix = label_pad + (label_width.saturating_sub(icon_w)) / 2;
+        let ix = pill_pad + label_pad + (label_width.saturating_sub(icon_w)) / 2;
         let iy = (dims.badge_height.saturating_sub(icon_h)) / 2;
         overlay_icon_shadowed(&mut img, &scaled_icon, ix as i64, iy as i64, shadow);
     } else {
         let actual_label_width = text_width(label, &fonts.label_scaled);
-        let label_x = label_pad + (label_width.saturating_sub(actual_label_width)) / 2;
+        let label_x = pill_pad + label_pad + (label_width.saturating_sub(actual_label_width)) / 2;
         let label_y = (dims.badge_height as i32 - fonts.label_scale.x as i32) / 2;
         draw_text_shadowed(
             &mut img,
@@ -357,7 +369,13 @@ pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc, label_style: L
     let label_scale = PxScale::from(vert_label_font_size);
     let value_scale = PxScale::from(vert_value_font_size);
     let vert_badge_width = (BASE_VERT_BADGE_WIDTH as f32 * badge_scale).round() as u32;
-    let vert_badge_padding_v = (BASE_VERT_BADGE_PADDING_V as f32 * badge_scale).round() as u32;
+    // Pills get extra top/bottom padding so the stacked label/value clear the
+    // fully-rounded caps; rounded badges keep the base padding.
+    let pill_pad = match appearance.shape {
+        BadgeShape::Pill => (BASE_PILL_PADDING as f32 * badge_scale).round() as u32,
+        BadgeShape::Rounded => 0,
+    };
+    let vert_badge_padding_v = (BASE_VERT_BADGE_PADDING_V as f32 * badge_scale).round() as u32 + pill_pad;
     let icon_height = (BASE_ICON_HEIGHT as f32 * badge_scale).round() as u32;
     let badge_radius = (BASE_BADGE_RADIUS as f32 * badge_scale).round() as u32;
 
@@ -726,6 +744,24 @@ mod tests {
         // Both still clear the very corner.
         assert_eq!(rounded.get_pixel(0, 0)[3], 0);
         assert_eq!(pill.get_pixel(0, 0)[3], 0);
+    }
+
+    #[test]
+    fn pill_pads_its_rounded_ends() {
+        let font = test_font();
+        let badge = RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() };
+        // Horizontal pills add padding at the left/right caps → wider than rounded.
+        let rounded = render_badge_appearance(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Rounded, background: BadgeBackground::Default });
+        let pill = render_badge_appearance(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Pill, background: BadgeBackground::Default });
+        assert!(pill.width() > rounded.width(), "pill should pad its rounded left/right ends");
+        // Vertical pills add padding at the top/bottom caps → taller than rounded.
+        let rounded_v = render_vertical_badge(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Rounded, background: BadgeBackground::Default }, 1.0);
+        let pill_v = render_vertical_badge(&badge, &font, LabelStyle::Text,
+            BadgeAppearance { shape: BadgeShape::Pill, background: BadgeBackground::Default }, 1.0);
+        assert!(pill_v.height() > rounded_v.height(), "vertical pill should pad its rounded top/bottom ends");
     }
 
     #[test]
