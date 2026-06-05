@@ -35,6 +35,7 @@ export interface RenderSettings {
   logo_label_style: string
   backdrop_label_style: string
   poster_badge_direction: string
+  poster_badge_split: boolean
   poster_badge_size: string
   logo_badge_size: string
   backdrop_badge_size: string
@@ -55,7 +56,7 @@ const props = defineProps<{
   loadSettings: () => Promise<RenderSettings | null>
   saveSettings: (s: SaveSettingsPayload) => Promise<string | null>
   resetSettings?: () => Promise<boolean>
-  fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string) => Promise<Response>
+  fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string, posterSplit?: boolean) => Promise<Response>
   fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, ratingsExclude?: string) => Promise<Response>
   fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, ratingsExclude?: string) => Promise<Response>
   fetchEpisodePreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean, ratingsExclude?: string) => Promise<Response>
@@ -80,6 +81,7 @@ const editPosterLabelStyle = ref(props.settings.poster_label_style || 'o')
 const editLogoLabelStyle = ref(props.settings.logo_label_style || 'o')
 const editBackdropLabelStyle = ref(props.settings.backdrop_label_style || 'o')
 const editPosterBadgeDirection = ref(props.settings.poster_badge_direction || 'd')
+const editPosterBadgeSplit = ref(props.settings.poster_badge_split ?? false)
 const editPosterBadgeSize = ref(props.settings.poster_badge_size || 'm')
 const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
@@ -110,6 +112,7 @@ function applySettings(s: RenderSettings) {
   editLogoLabelStyle.value = s.logo_label_style || 'o'
   editBackdropLabelStyle.value = s.backdrop_label_style || 'o'
   editPosterBadgeDirection.value = s.poster_badge_direction || 'd'
+  editPosterBadgeSplit.value = s.poster_badge_split ?? false
   editPosterBadgeSize.value = s.poster_badge_size || 'm'
   editLogoBadgeSize.value = s.logo_badge_size || 'm'
   editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
@@ -174,6 +177,7 @@ async function autoSave() {
       logo_label_style: editLogoLabelStyle.value,
       backdrop_label_style: editBackdropLabelStyle.value,
       poster_badge_direction: editPosterBadgeDirection.value,
+      poster_badge_split: editPosterBadgeSplit.value,
       poster_badge_size: editPosterBadgeSize.value,
       logo_badge_size: editLogoBadgeSize.value,
       backdrop_badge_size: editBackdropBadgeSize.value,
@@ -212,7 +216,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
   () => {
     if (syncing) return
     autoSave()
@@ -304,7 +308,7 @@ let backdropPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let episodePreviewTimer: ReturnType<typeof setTimeout> | null = null
 
 function updatePosterPreview() {
-  fetchPreviewImage(posterPreview.value, props.fetchPreview, { posterPosition: editPosterPosition.value, badgeStyle: editPosterBadgeStyle.value, labelStyle: editPosterLabelStyle.value, badgeDirection: editPosterBadgeDirection.value, badgeSize: editPosterBadgeSize.value })
+  fetchPreviewImage(posterPreview.value, (_limit, order) => props.fetchPreview(editRatingsLimit.value, order, editPosterPosition.value, editPosterBadgeStyle.value, editPosterLabelStyle.value, editPosterBadgeDirection.value, editPosterBadgeSize.value, editRatingsExclude.value.join(','), editPosterBadgeSplit.value))
 }
 
 function updateLogoPreview() {
@@ -346,7 +350,7 @@ watch([editRatingsOrder, editRatingsExclude], () => {
 }, { deep: true })
 
 // Poster-only settings
-watch([editRatingsLimit, editPosterPosition, editPosterBadgeStyle, editPosterLabelStyle, editPosterBadgeDirection, editPosterBadgeSize], () => {
+watch([editRatingsLimit, editPosterPosition, editPosterBadgeStyle, editPosterLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterBadgeSize], () => {
   if (syncing) return
   if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
   posterPreviewTimer = setTimeout(updatePosterPreview, 500)
@@ -611,6 +615,20 @@ function toggleExclude(key: string, checked: boolean) {
           @update:model-value="(v) => editTextless = !!v"
         />
         <Label :for="inputId('textless')">Prefer textless posters</Label>
+      </div>
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <Checkbox
+            :id="inputId('poster-badge-split')"
+            :model-value="editPosterBadgeSplit"
+            data-testid="poster-badge-split-checkbox"
+            @update:model-value="(v) => editPosterBadgeSplit = !!v"
+          />
+          <Label :for="inputId('poster-badge-split')">Split badges onto opposite sides</Label>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          Splits badges across two opposite sides — left/right for a vertical layout, top/bottom for horizontal rows.
+        </p>
       </div>
     </div>
 

@@ -31,6 +31,7 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     logo_label_style: 'o',
     backdrop_label_style: 'o',
     poster_badge_direction: 'd',
+    poster_badge_split: false,
     poster_badge_size: 'm',
     logo_badge_size: 'm',
     backdrop_badge_size: 'm',

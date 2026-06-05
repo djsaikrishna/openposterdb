@@ -102,6 +102,10 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<bool>)]
     pub blur: Option<bool>,
+    /// Split badges across two opposite sides of the poster (poster only).
+    #[serde(default)]
+    #[param(value_type = Option<bool>)]
+    pub split: Option<bool>,
 }
 
 impl ImageQuery {
@@ -118,6 +122,7 @@ impl ImageQuery {
             || self.image_source.is_some()
             || self.textless.is_some()
             || self.blur.is_some()
+            || self.split.is_some()
     }
 }
 
@@ -166,6 +171,7 @@ pub struct FreeKeySettingsResponse {
     pub logo_label_style: LabelStyle,
     pub backdrop_label_style: LabelStyle,
     pub poster_badge_direction: BadgeDirection,
+    pub poster_badge_split: bool,
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
@@ -199,6 +205,7 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             logo_label_style: s.logo_label_style,
             backdrop_label_style: s.backdrop_label_style,
             poster_badge_direction: s.poster_badge_direction,
+            poster_badge_split: s.poster_badge_split,
             poster_badge_size: s.poster_badge_size,
             logo_badge_size: s.logo_badge_size,
             backdrop_badge_size: s.backdrop_badge_size,
@@ -380,6 +387,9 @@ fn apply_query_overrides(
         }
         if let Some(pos) = query.position {
             s.poster_position = pos;
+        }
+        if let Some(split) = query.split {
+            s.poster_badge_split = split;
         }
     }
     if kind == cache::ImageType::Backdrop {
@@ -810,6 +820,7 @@ mod tests {
             image_source: None,
             textless: None,
             blur: None,
+            split: None,
         }
     }
 
@@ -836,6 +847,7 @@ mod tests {
             textless: Some(true),
             ratings_order: Some("imdb,tmdb".into()),
             ratings_exclude: Some("rt".into()),
+            split: Some(true),
             ..empty_query()
         };
         let result =
@@ -849,6 +861,7 @@ mod tests {
         assert_eq!(result.poster_position, BadgePosition::TopLeft);
         assert_eq!(result.image_source, ImageSource::Fanart);
         assert!(result.textless);
+        assert!(result.poster_badge_split);
         assert_eq!(&*result.ratings_order, "imdb,tmdb");
     }
 

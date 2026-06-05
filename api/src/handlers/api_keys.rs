@@ -111,6 +111,7 @@ pub struct RenderSettingsResponse {
     pub logo_label_style: LabelStyle,
     pub backdrop_label_style: LabelStyle,
     pub poster_badge_direction: BadgeDirection,
+    pub poster_badge_split: bool,
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
@@ -156,6 +157,7 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         logo_label_style: settings.logo_label_style,
         backdrop_label_style: settings.backdrop_label_style,
         poster_badge_direction: settings.poster_badge_direction,
+        poster_badge_split: settings.poster_badge_split,
         poster_badge_size: settings.poster_badge_size,
         logo_badge_size: settings.logo_badge_size,
         backdrop_badge_size: settings.backdrop_badge_size,
@@ -205,6 +207,8 @@ pub struct UpdateSettingsRequest {
     pub backdrop_label_style: LabelStyle,
     #[serde(default = "db::default_poster_badge_direction")]
     pub poster_badge_direction: BadgeDirection,
+    #[serde(default)]
+    pub poster_badge_split: bool,
     #[serde(default = "db::default_badge_size")]
     pub poster_badge_size: BadgeSize,
     #[serde(default = "db::default_badge_size")]
@@ -250,6 +254,7 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         logo_label_style: req.logo_label_style.as_str(),
         backdrop_label_style: req.backdrop_label_style.as_str(),
         poster_badge_direction: req.poster_badge_direction.as_str(),
+        poster_badge_split: req.poster_badge_split,
         poster_badge_size: req.poster_badge_size.as_str(),
         logo_badge_size: req.logo_badge_size.as_str(),
         backdrop_badge_size: req.backdrop_badge_size.as_str(),

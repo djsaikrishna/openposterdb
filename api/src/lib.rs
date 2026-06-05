@@ -346,4 +346,8 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN ratings_exclude TEXT NOT NULL DEFAULT ''",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN poster_badge_split INTEGER NOT NULL DEFAULT 0",
+        "duplicate column",
+    ),
 ];

@@ -22,6 +22,7 @@ export interface FreeKeyDefaults {
   logo_label_style: string
   backdrop_label_style: string
   poster_badge_direction: string
+  poster_badge_split: boolean
   poster_badge_size: string
   logo_badge_size: string
   backdrop_badge_size: string

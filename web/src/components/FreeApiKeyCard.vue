@@ -57,6 +57,7 @@ const badgeDirection = ref('default')
 const imagePosition = ref('default')
 const imageSource = ref('default')
 const textless = ref('default')
+const posterSplit = ref('default')
 const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 // Baseline the user's order is compared against to decide whether to send a
 // `ratings_order` override — the server's order once loaded, else the frontend default.
@@ -160,6 +161,9 @@ const badgeDirectionDefaultLabel = computed(() => annotate('Direction', typeDefa
 const textlessDefaultLabel = computed(() =>
   defaults.value ? `Textless: default (${defaults.value.textless ? 'Yes' : 'No'})` : 'Textless: default',
 )
+const splitDefaultLabel = computed(() =>
+  defaults.value ? `Split badges: default (${defaults.value.poster_badge_split ? 'Yes' : 'No'})` : 'Split badges: default',
+)
 const blurDefaultLabel = computed(() =>
   defaults.value ? `Blur: default (${defaults.value.episode_blur ? 'Yes' : 'No'})` : 'Blur: default',
 )
@@ -177,6 +181,7 @@ watch(imageType, (newType) => {
   }
   if (newType !== 'poster') {
     textless.value = 'default'
+    posterSplit.value = 'default'
   }
   if (newType === 'episode') {
     imageSource.value = 'default'
@@ -215,6 +220,7 @@ const queryString = computed(() => {
   if (imageType.value !== 'logo' && imagePosition.value !== 'default') params.set('position', imagePosition.value)
   if (imageType.value !== 'episode' && imageSource.value !== 'default') params.set('image_source', imageSource.value)
   if (imageType.value === 'poster' && textless.value !== 'default') params.set('textless', textless.value)
+  if (imageType.value === 'poster' && posterSplit.value !== 'default') params.set('split', posterSplit.value)
   if (imageType.value === 'episode' && blur.value !== 'default') params.set('blur', blur.value)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
@@ -361,6 +367,16 @@ async function handleFetch() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="default">{{ textlessDefaultLabel }}</SelectItem>
+                <SelectItem value="true">Yes</SelectItem>
+                <SelectItem value="false">No</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-model="posterSplit">
+              <SelectTrigger id="free-split" aria-label="Split badges" class="bg-background">
+                <SelectValue placeholder="Split badges: default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">{{ splitDefaultLabel }}</SelectItem>
                 <SelectItem value="true">Yes</SelectItem>
                 <SelectItem value="false">No</SelectItem>
               </SelectContent>

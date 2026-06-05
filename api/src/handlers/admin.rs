@@ -129,6 +129,7 @@ pub struct GlobalSettingsResponse {
     pub logo_label_style: LabelStyle,
     pub backdrop_label_style: LabelStyle,
     pub poster_badge_direction: BadgeDirection,
+    pub poster_badge_split: bool,
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
@@ -177,6 +178,7 @@ pub async fn get_settings(
         logo_label_style: settings.logo_label_style,
         backdrop_label_style: settings.backdrop_label_style,
         poster_badge_direction: settings.poster_badge_direction,
+        poster_badge_split: settings.poster_badge_split,
         poster_badge_size: settings.poster_badge_size,
         logo_badge_size: settings.logo_badge_size,
         backdrop_badge_size: settings.backdrop_badge_size,
@@ -227,6 +229,8 @@ pub struct UpdateGlobalSettingsRequest {
     pub backdrop_label_style: LabelStyle,
     #[serde(default = "db::default_poster_badge_direction")]
     pub poster_badge_direction: BadgeDirection,
+    #[serde(default)]
+    pub poster_badge_split: bool,
     #[serde(default = "db::default_badge_size")]
     pub poster_badge_size: BadgeSize,
     #[serde(default = "db::default_badge_size")]
@@ -264,6 +268,7 @@ pub async fn update_settings(
     let backdrop_limit_str = req.backdrop_ratings_limit.to_string();
     let episode_limit_str = req.episode_ratings_limit.to_string();
     let episode_blur_str = if req.episode_blur { "true" } else { "false" };
+    let poster_badge_split_str = if req.poster_badge_split { "true" } else { "false" };
     let mut batch: Vec<(&str, &str)> = vec![
         ("image_source", req.image_source.as_str()),
         ("lang", &req.lang),
@@ -281,6 +286,7 @@ pub async fn update_settings(
         ("logo_label_style", req.logo_label_style.as_str()),
         ("backdrop_label_style", req.backdrop_label_style.as_str()),
         ("poster_badge_direction", req.poster_badge_direction.as_str()),
+        ("poster_badge_split", poster_badge_split_str),
         ("poster_badge_size", req.poster_badge_size.as_str()),
         ("logo_badge_size", req.logo_badge_size.as_str()),
         ("backdrop_badge_size", req.backdrop_badge_size.as_str()),
