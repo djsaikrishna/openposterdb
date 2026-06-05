@@ -296,6 +296,33 @@ describe('FreeApiKeyCard', () => {
     expect(findCurlCode(wrapper).text()).toContain('image_source=f')
   })
 
+  it('resets per-type render overrides when switching image type', async () => {
+    const wrapper = mountCard(true)
+
+    // Override poster's per-type render settings away from their defaults.
+    await setSelectById(wrapper, 'free-badge-style', 'h')
+    await setSelectById(wrapper, 'free-label-style', 't')
+    await setSelectById(wrapper, 'free-badge-size', 'l')
+    await setSelectById(wrapper, 'free-ratings-limit', '7')
+    // A global control (lang) that should survive the switch.
+    await setSelectById(wrapper, 'free-lang', 'en')
+    const posterCurl = findCurlCode(wrapper).text()
+    expect(posterCurl).toContain('badge_style=h')
+    expect(posterCurl).toContain('label_style=t')
+    expect(posterCurl).toContain('badge_size=l')
+    expect(posterCurl).toContain('ratings_limit=7')
+
+    // Switching type re-applies the new type's defaults: per-type overrides drop,
+    // the global lang persists.
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    const backdropCurl = findCurlCode(wrapper).text()
+    expect(backdropCurl).not.toContain('badge_style=')
+    expect(backdropCurl).not.toContain('label_style=')
+    expect(backdropCurl).not.toContain('badge_size=')
+    expect(backdropCurl).not.toContain('ratings_limit=')
+    expect(backdropCurl).toContain('lang=en')
+  })
+
   // --- Episode support ---
 
   it('episode queryString includes badge_direction, position, and blur', async () => {
