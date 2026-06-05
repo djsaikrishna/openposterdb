@@ -36,6 +36,7 @@ const defaultSettings = {
   logo_label_style: 't',
   backdrop_label_style: 't',
   poster_badge_direction: 'd',
+  poster_badge_split: false,
   backdrop_position: 'tr',
   backdrop_badge_direction: 'v',
   episode_ratings_limit: 1,

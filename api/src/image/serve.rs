@@ -176,6 +176,7 @@ pub fn settings_cache_suffix_with_ratings(
         logo_label_style: _,
         backdrop_label_style: _,
         poster_badge_direction: _,
+        poster_badge_split: _,
         poster_badge_size: _,
         logo_badge_size: _,
         backdrop_badge_size: _,
@@ -211,7 +212,10 @@ pub fn settings_cache_suffix_with_ratings(
             let bsz = settings.poster_badge_size.cache_suffix();
             let shp = badge_shape_cache_suffix(settings.poster_badge_shape.as_str());
             let bgd = badge_background_cache_suffix(settings.poster_badge_background.as_str());
-            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{is_suffix}")
+            // Split badges onto opposite sides — only tokenized when enabled, so
+            // the default (no split) keeps existing cache keys unchanged.
+            let split = if settings.poster_badge_split { ".x1" } else { "" };
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{split}{shp}{bgd}{is_suffix}")
         }
         cache::ImageType::Logo => {
             let bs = badge_style_cache_suffix(settings.logo_badge_style.as_str());
@@ -1350,6 +1354,7 @@ async fn generate_poster_with_source(
         label_style: settings.poster_label_style,
         badge_appearance: settings.poster_appearance(),
         badge_direction: settings.poster_badge_direction,
+        poster_badge_split: settings.poster_badge_split,
         render_semaphore: state.render_semaphore.clone(),
         target_width,
         badge_scale,

@@ -382,6 +382,56 @@ impl BadgePosition {
     pub fn is_center_horizontal(self) -> bool {
         matches!(self, Self::BottomCenter | Self::TopCenter)
     }
+
+    /// The top and bottom anchors that preserve this position's horizontal
+    /// alignment. Returns `(top_variant, bottom_variant)`.
+    fn top_bottom_variants(self) -> (Self, Self) {
+        if self.is_left() {
+            (Self::TopLeft, Self::BottomLeft)
+        } else if self.is_right() {
+            (Self::TopRight, Self::BottomRight)
+        } else {
+            (Self::TopCenter, Self::BottomCenter)
+        }
+    }
+
+    /// The left and right anchors that preserve this position's vertical
+    /// alignment. Returns `(left_variant, right_variant)`.
+    fn left_right_variants(self) -> (Self, Self) {
+        if self.is_top() {
+            (Self::TopLeft, Self::TopRight)
+        } else if self.is_bottom() {
+            (Self::BottomLeft, Self::BottomRight)
+        } else {
+            (Self::Left, Self::Right)
+        }
+    }
+
+    /// Anchor positions for splitting badges across two opposite sides.
+    ///
+    /// Returns `(primary, opposite)`: the primary anchor keeps the side implied
+    /// by this position (so badges that previously sat at the bottom still start
+    /// at the bottom), and the opposite anchor is its mirror across the split
+    /// axis. When `split_top_bottom` is true the split is vertical (top/bottom,
+    /// used for horizontal badge rows); otherwise it is horizontal (left/right,
+    /// used for a vertical badge column).
+    pub fn split_anchors(self, split_top_bottom: bool) -> (Self, Self) {
+        if split_top_bottom {
+            let (top, bottom) = self.top_bottom_variants();
+            if self.is_top() {
+                (top, bottom)
+            } else {
+                (bottom, top)
+            }
+        } else {
+            let (left, right) = self.left_right_variants();
+            if self.is_right() {
+                (right, left)
+            } else {
+                (left, right)
+            }
+        }
+    }
 }
 
 impl_str_enum!(BadgePosition);
@@ -1304,6 +1354,62 @@ mod tests {
     }
 
     #[test]
+    fn split_anchors_top_bottom_preserves_horizontal_alignment() {
+        // Horizontal rows (split_top_bottom = true): primary keeps the
+        // configured vertical side, opposite is the mirror; horizontal
+        // alignment is preserved.
+        assert_eq!(
+            BadgePosition::BottomCenter.split_anchors(true),
+            (BadgePosition::BottomCenter, BadgePosition::TopCenter)
+        );
+        assert_eq!(
+            BadgePosition::TopCenter.split_anchors(true),
+            (BadgePosition::TopCenter, BadgePosition::BottomCenter)
+        );
+        assert_eq!(
+            BadgePosition::TopRight.split_anchors(true),
+            (BadgePosition::TopRight, BadgePosition::BottomRight)
+        );
+        assert_eq!(
+            BadgePosition::BottomLeft.split_anchors(true),
+            (BadgePosition::BottomLeft, BadgePosition::TopLeft)
+        );
+        // Vertically-centered anchor (Left): defaults to bottom-primary.
+        assert_eq!(
+            BadgePosition::Left.split_anchors(true),
+            (BadgePosition::BottomLeft, BadgePosition::TopLeft)
+        );
+    }
+
+    #[test]
+    fn split_anchors_left_right_preserves_vertical_alignment() {
+        // Vertical column (split_top_bottom = false): primary keeps the
+        // configured horizontal side, opposite is the mirror; vertical
+        // alignment is preserved.
+        assert_eq!(
+            BadgePosition::Left.split_anchors(false),
+            (BadgePosition::Left, BadgePosition::Right)
+        );
+        assert_eq!(
+            BadgePosition::Right.split_anchors(false),
+            (BadgePosition::Right, BadgePosition::Left)
+        );
+        assert_eq!(
+            BadgePosition::TopRight.split_anchors(false),
+            (BadgePosition::TopRight, BadgePosition::TopLeft)
+        );
+        assert_eq!(
+            BadgePosition::BottomLeft.split_anchors(false),
+            (BadgePosition::BottomLeft, BadgePosition::BottomRight)
+        );
+        // Horizontally-centered anchor (BottomCenter): defaults to left-primary.
+        assert_eq!(
+            BadgePosition::BottomCenter.split_anchors(false),
+            (BadgePosition::BottomLeft, BadgePosition::BottomRight)
+        );
+    }
+
+    #[test]
     fn label_style_uses_icon() {
         assert!(LabelStyle::Icon.uses_icon());
         assert!(LabelStyle::Official.uses_icon());
@@ -1384,6 +1490,7 @@ mod tests {
         assert_eq!(defaults.backdrop_badge_style, BadgeStyle::Vertical);
         assert_eq!(defaults.poster_label_style, LabelStyle::Official);
         assert_eq!(defaults.poster_badge_direction, BadgeDirection::Default);
+        assert!(!defaults.poster_badge_split);
         assert_eq!(defaults.poster_badge_size, BadgeSize::Medium);
         assert_eq!(defaults.logo_badge_size, BadgeSize::Medium);
         assert_eq!(defaults.backdrop_badge_size, BadgeSize::Medium);
@@ -1766,6 +1873,7 @@ pub struct UpsertApiKeySettings<'a> {
     pub logo_label_style: &'a str,
     pub backdrop_label_style: &'a str,
     pub poster_badge_direction: &'a str,
+    pub poster_badge_split: bool,
     pub poster_badge_size: &'a str,
     pub logo_badge_size: &'a str,
     pub backdrop_badge_size: &'a str,
@@ -1810,6 +1918,7 @@ pub async fn upsert_api_key_settings(
         logo_label_style: Set(params.logo_label_style.to_string()),
         backdrop_label_style: Set(params.backdrop_label_style.to_string()),
         poster_badge_direction: Set(params.poster_badge_direction.to_string()),
+        poster_badge_split: Set(params.poster_badge_split),
         poster_badge_size: Set(params.poster_badge_size.to_string()),
         logo_badge_size: Set(params.logo_badge_size.to_string()),
         backdrop_badge_size: Set(params.backdrop_badge_size.to_string()),
@@ -1851,6 +1960,7 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::LogoLabelStyle,
                     api_key_settings::Column::BackdropLabelStyle,
                     api_key_settings::Column::PosterBadgeDirection,
+                    api_key_settings::Column::PosterBadgeSplit,
                     api_key_settings::Column::PosterBadgeSize,
                     api_key_settings::Column::LogoBadgeSize,
                     api_key_settings::Column::BackdropBadgeSize,
@@ -1913,6 +2023,9 @@ pub struct RenderSettings {
     pub logo_label_style: LabelStyle,
     pub backdrop_label_style: LabelStyle,
     pub poster_badge_direction: BadgeDirection,
+    /// When true, poster badges are split evenly across two opposite sides
+    /// (left/right for a vertical badge layout, top/bottom for horizontal rows).
+    pub poster_badge_split: bool,
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
@@ -1974,6 +2087,7 @@ impl Default for RenderSettings {
             logo_label_style: LabelStyle::Official,
             backdrop_label_style: LabelStyle::Official,
             poster_badge_direction: BadgeDirection::Default,
+            poster_badge_split: false,
             poster_badge_size: BadgeSize::Medium,
             logo_badge_size: BadgeSize::Medium,
             backdrop_badge_size: BadgeSize::Medium,
@@ -2041,6 +2155,10 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         logo_label_style: global_or(globals, "logo_label_style", LabelStyle::parse, defaults.logo_label_style),
         backdrop_label_style: global_or(globals, "backdrop_label_style", LabelStyle::parse, defaults.backdrop_label_style),
         poster_badge_direction: global_or(globals, "poster_badge_direction", BadgeDirection::parse, defaults.poster_badge_direction),
+        poster_badge_split: globals
+            .get("poster_badge_split")
+            .map(|v| v == "true")
+            .unwrap_or(defaults.poster_badge_split),
         poster_badge_size: global_or(globals, "poster_badge_size", BadgeSize::parse, defaults.poster_badge_size),
         logo_badge_size: global_or(globals, "logo_badge_size", BadgeSize::parse, defaults.logo_badge_size),
         backdrop_badge_size: global_or(globals, "backdrop_badge_size", BadgeSize::parse, defaults.backdrop_badge_size),
@@ -2096,6 +2214,7 @@ pub async fn get_effective_render_settings(
                 logo_label_style: parse_setting_or_default(&s.logo_label_style, "logo_label_style", LabelStyle::parse, LabelStyle::Official),
                 backdrop_label_style: parse_setting_or_default(&s.backdrop_label_style, "backdrop_label_style", LabelStyle::parse, LabelStyle::Official),
                 poster_badge_direction: parse_setting_or_default(&s.poster_badge_direction, "poster_badge_direction", BadgeDirection::parse, BadgeDirection::Default),
+                poster_badge_split: s.poster_badge_split,
                 poster_badge_size: parse_setting_or_default(&s.poster_badge_size, "poster_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 logo_badge_size: parse_setting_or_default(&s.logo_badge_size, "logo_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 backdrop_badge_size: parse_setting_or_default(&s.backdrop_badge_size, "backdrop_badge_size", BadgeSize::parse, BadgeSize::Medium),

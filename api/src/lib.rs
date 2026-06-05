@@ -378,4 +378,8 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN episode_badge_background TEXT NOT NULL DEFAULT 'd'",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN poster_badge_split INTEGER NOT NULL DEFAULT 0",
+        "duplicate column",
+    ),
 ];
