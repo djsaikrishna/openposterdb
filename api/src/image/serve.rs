@@ -215,7 +215,10 @@ pub fn settings_cache_suffix_with_ratings(
             // Split badges onto opposite sides — only tokenized when enabled, so
             // the default (no split) keeps existing cache keys unchanged.
             let split = if settings.poster_badge_split { ".x1" } else { "" };
-            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{split}{shp}{bgd}{is_suffix}")
+            // Shape/background sit immediately after badge size (before the
+            // optional split token) so the v003 cache-key migration can insert
+            // their defaults with a single uniform rule across all image types.
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{split}{is_suffix}")
         }
         cache::ImageType::Logo => {
             let bs = badge_style_cache_suffix(settings.logo_badge_style.as_str());
