@@ -168,26 +168,32 @@ const blurDefaultLabel = computed(() =>
   defaults.value ? `Blur: default (${defaults.value.episode_blur ? 'Yes' : 'No'})` : 'Blur: default',
 )
 
-// Reset size when switching image type if the current size is invalid,
-// and reset poster-only controls when switching away from poster
+// Switching image type re-applies that type's own defaults: each type carries
+// its own server defaults (poster_badge_style vs logo_badge_style, etc.), so the
+// per-type render controls reset to "default" and the dropdowns reflect the new
+// type's settings rather than carrying over the previous type's overrides.
 watch(imageType, (newType) => {
   const validValues = sizeOptions.value.map(o => o.value)
   if (!validValues.includes(imageSize.value)) {
     imageSize.value = 'default'
   }
-  if (newType !== 'poster' && newType !== 'episode' && newType !== 'backdrop') {
-    badgeDirection.value = 'default'
-    imagePosition.value = 'default'
-  }
-  if (newType !== 'poster') {
-    textless.value = 'default'
-    posterSplit.value = 'default'
-  }
+  // Per-type render controls — reset on every switch so the form shows the
+  // appropriate defaults for the newly selected image type.
+  badgeStyle.value = 'default'
+  labelStyle.value = 'default'
+  badgeSize.value = 'default'
+  ratingsLimit.value = 'default'
+  badgeDirection.value = 'default'
+  imagePosition.value = 'default'
+  // Controls that only exist for one type; clearing them keeps the query string
+  // free of params the new type would ignore.
+  textless.value = 'default'
+  posterSplit.value = 'default'
+  blur.value = 'default'
+  // image_source is a single global default shared by every type, so it persists
+  // across switches — except episode, which doesn't accept the param.
   if (newType === 'episode') {
     imageSource.value = 'default'
-  }
-  if (newType !== 'episode') {
-    blur.value = 'default'
   }
 })
 
