@@ -25,6 +25,7 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     poster_badge_direction: 'd', poster_badge_split: false,
     poster_badge_size: 'm', logo_badge_size: 'm', backdrop_badge_size: 'm',
     backdrop_position: 'tc', backdrop_badge_direction: 'd',
+    backdrop_edge_inset_x: 0, backdrop_edge_inset_y: 0,
     episode_ratings_limit: 3, episode_badge_style: 'v', episode_label_style: 'o',
     episode_badge_size: 'm', episode_position: 'bc', episode_badge_direction: 'd',
     episode_blur: false, poster_fit: 'native', ...overrides,
