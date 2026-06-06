@@ -42,6 +42,8 @@ export interface RenderSettings {
   backdrop_badge_size: string
   backdrop_position: string
   backdrop_badge_direction: string
+  backdrop_edge_inset_x: number
+  backdrop_edge_inset_y: number
   episode_ratings_limit: number
   episode_badge_style: string
   episode_label_style: string
@@ -67,7 +69,7 @@ const props = defineProps<{
   resetSettings?: () => Promise<boolean>
   fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string, posterSplit?: boolean, badgeShape?: string, badgeBackground?: string, posterFit?: string) => Promise<Response>
   fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, ratingsExclude?: string, badgeShape?: string, badgeBackground?: string) => Promise<Response>
-  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, ratingsExclude?: string, badgeShape?: string, badgeBackground?: string) => Promise<Response>
+  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, ratingsExclude?: string, badgeShape?: string, badgeBackground?: string, edgeInsetX?: number, edgeInsetY?: number) => Promise<Response>
   fetchEpisodePreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean, ratingsExclude?: string, badgeShape?: string, badgeBackground?: string) => Promise<Response>
 }>()
 
@@ -97,6 +99,8 @@ const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
 const editBackdropPosition = ref(props.settings.backdrop_position || 'tr')
 const editBackdropBadgeDirection = ref(props.settings.backdrop_badge_direction || 'd')
+const editBackdropEdgeInsetX = ref(props.settings.backdrop_edge_inset_x ?? 0)
+const editBackdropEdgeInsetY = ref(props.settings.backdrop_edge_inset_y ?? 0)
 const editEpisodeRatingsLimit = ref(props.settings.episode_ratings_limit ?? 1)
 const editEpisodeBadgeStyle = ref(props.settings.episode_badge_style || 'v')
 const editEpisodeLabelStyle = ref(props.settings.episode_label_style || 'o')
@@ -112,6 +116,18 @@ const editPosterBadgeBackground = ref(props.settings.poster_badge_background || 
 const editLogoBadgeBackground = ref(props.settings.logo_badge_background || 'd')
 const editBackdropBadgeBackground = ref(props.settings.backdrop_badge_background || 'd')
 const editEpisodeBadgeBackground = ref(props.settings.episode_badge_background || 'd')
+
+// Which edges the current backdrop position anchors to. The horizontal inset
+// only applies to left/right positions and the vertical inset only to top/bottom
+// positions; centered axes hide their control (and the server ignores them).
+const backdropIsTop = computed(() => ['tl', 'tc', 'tr'].includes(editBackdropPosition.value))
+const backdropIsBottom = computed(() => ['bl', 'bc', 'br'].includes(editBackdropPosition.value))
+const backdropIsLeft = computed(() => ['tl', 'bl', 'l'].includes(editBackdropPosition.value))
+const backdropIsRight = computed(() => ['tr', 'br', 'r'].includes(editBackdropPosition.value))
+const backdropShowVerticalInset = computed(() => backdropIsTop.value || backdropIsBottom.value)
+const backdropShowHorizontalInset = computed(() => backdropIsLeft.value || backdropIsRight.value)
+const backdropVerticalInsetLabel = computed(() => (backdropIsTop.value ? 'Space from top' : 'Space from bottom'))
+const backdropHorizontalInsetLabel = computed(() => (backdropIsLeft.value ? 'Space from left' : 'Space from right'))
 
 function applySettings(s: RenderSettings) {
   editFanart.value = s.image_source === 'f'
@@ -137,6 +153,8 @@ function applySettings(s: RenderSettings) {
   editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
   editBackdropPosition.value = s.backdrop_position || 'tr'
   editBackdropBadgeDirection.value = s.backdrop_badge_direction || 'd'
+  editBackdropEdgeInsetX.value = s.backdrop_edge_inset_x ?? 0
+  editBackdropEdgeInsetY.value = s.backdrop_edge_inset_y ?? 0
   editEpisodeRatingsLimit.value = s.episode_ratings_limit ?? 1
   editEpisodeBadgeStyle.value = s.episode_badge_style || 'v'
   editEpisodeLabelStyle.value = s.episode_label_style || 'o'
@@ -211,6 +229,8 @@ async function autoSave() {
       backdrop_badge_size: editBackdropBadgeSize.value,
       backdrop_position: editBackdropPosition.value,
       backdrop_badge_direction: editBackdropBadgeDirection.value,
+      backdrop_edge_inset_x: editBackdropEdgeInsetX.value,
+      backdrop_edge_inset_y: editBackdropEdgeInsetY.value,
       episode_ratings_limit: editEpisodeRatingsLimit.value,
       episode_badge_style: editEpisodeBadgeStyle.value,
       episode_label_style: editEpisodeLabelStyle.value,
@@ -252,7 +272,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground],
   () => {
     if (syncing) return
     autoSave()
@@ -354,7 +374,7 @@ function updateLogoPreview() {
 
 function updateBackdropPreview() {
   if (props.fetchBackdropPreview) {
-    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value, editRatingsExclude.value.join(','), editBackdropBadgeShape.value, editBackdropBadgeBackground.value))
+    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value, editRatingsExclude.value.join(','), editBackdropBadgeShape.value, editBackdropBadgeBackground.value, editBackdropEdgeInsetX.value, editBackdropEdgeInsetY.value))
   }
 }
 
@@ -399,7 +419,7 @@ watch([editLogoRatingsLimit, editLogoBadgeStyle, editLogoLabelStyle, editLogoBad
 })
 
 // Backdrop-only settings
-watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropBadgeShape, editBackdropBadgeBackground], () => {
+watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editBackdropBadgeShape, editBackdropBadgeBackground], () => {
   if (syncing) return
   if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
   backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
@@ -961,6 +981,42 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectItem value="r">Right</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div v-if="backdropShowVerticalInset || backdropShowHorizontalInset" class="space-y-1">
+            <Label>Distance from edge</Label>
+            <div class="flex flex-wrap gap-4">
+              <div v-if="backdropShowVerticalInset" class="space-y-1">
+                <Label :for="inputId('backdrop-edge-inset-y')" class="text-xs font-normal text-muted-foreground">{{ backdropVerticalInsetLabel }}</Label>
+                <div class="flex items-center gap-1">
+                  <Input
+                    :id="inputId('backdrop-edge-inset-y')"
+                    v-model.number="editBackdropEdgeInsetY"
+                    type="number"
+                    :min="0"
+                    :max="50"
+                    class="w-[80px]"
+                    data-testid="backdrop-edge-inset-y"
+                  />
+                  <span class="text-xs text-muted-foreground">%</span>
+                </div>
+              </div>
+              <div v-if="backdropShowHorizontalInset" class="space-y-1">
+                <Label :for="inputId('backdrop-edge-inset-x')" class="text-xs font-normal text-muted-foreground">{{ backdropHorizontalInsetLabel }}</Label>
+                <div class="flex items-center gap-1">
+                  <Input
+                    :id="inputId('backdrop-edge-inset-x')"
+                    v-model.number="editBackdropEdgeInsetX"
+                    type="number"
+                    :min="0"
+                    :max="50"
+                    class="w-[80px]"
+                    data-testid="backdrop-edge-inset-x"
+                  />
+                  <span class="text-xs text-muted-foreground">%</span>
+                </div>
+              </div>
+            </div>
+            <p class="text-xs text-muted-foreground">Inset ratings from the image edge (% of size) — useful when a player crops the backdrop.</p>
           </div>
           <div class="space-y-2">
             <Label :for="inputId('backdrop-badge-direction')">Badge direction</Label>

@@ -118,6 +118,8 @@ pub struct RenderSettingsResponse {
     pub backdrop_badge_size: BadgeSize,
     pub backdrop_position: BadgePosition,
     pub backdrop_badge_direction: BadgeDirection,
+    pub backdrop_edge_inset_x: i32,
+    pub backdrop_edge_inset_y: i32,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: BadgeStyle,
     pub episode_label_style: LabelStyle,
@@ -173,6 +175,8 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         backdrop_badge_size: settings.backdrop_badge_size,
         backdrop_position: settings.backdrop_position,
         backdrop_badge_direction: settings.backdrop_badge_direction,
+        backdrop_edge_inset_x: settings.backdrop_edge_inset_x,
+        backdrop_edge_inset_y: settings.backdrop_edge_inset_y,
         episode_ratings_limit: settings.episode_ratings_limit,
         episode_badge_style: settings.episode_badge_style,
         episode_label_style: settings.episode_label_style,
@@ -239,6 +243,10 @@ pub struct UpdateSettingsRequest {
     pub backdrop_position: BadgePosition,
     #[serde(default = "db::default_backdrop_badge_direction")]
     pub backdrop_badge_direction: BadgeDirection,
+    #[serde(default = "db::default_backdrop_edge_inset")]
+    pub backdrop_edge_inset_x: i32,
+    #[serde(default = "db::default_backdrop_edge_inset")]
+    pub backdrop_edge_inset_y: i32,
     #[serde(default = "db::default_episode_ratings_limit")]
     pub episode_ratings_limit: i32,
     #[serde(default = "db::default_episode_badge_style")]
@@ -312,6 +320,8 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         logo_badge_background: req.logo_badge_background.as_str(),
         backdrop_badge_background: req.backdrop_badge_background.as_str(),
         episode_badge_background: req.episode_badge_background.as_str(),
+        backdrop_edge_inset_x: db::clamp_edge_inset(req.backdrop_edge_inset_x),
+        backdrop_edge_inset_y: db::clamp_edge_inset(req.backdrop_edge_inset_y),
     }
 }
 

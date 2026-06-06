@@ -318,8 +318,12 @@ pub async fn preview_backdrop(
     let badge_style = query.badge_style.unwrap_or(BadgeStyle::Vertical).resolve(badge_direction);
     let label_style = query.label_style.unwrap_or(db::default_label_style());
     let badge_appearance = preview_badge_appearance(&query);
+    let edge_inset_x = db::clamp_edge_inset(query.edge_inset_x.unwrap_or(0));
+    let edge_inset_y = db::clamp_edge_inset(query.edge_inset_y.unwrap_or(0));
     let ratings_suffix = ratings::ratings_cache_suffix(ratings_order, ratings_exclude, ratings_limit);
-    let preview_settings = preview_render_settings(cache::ImageType::Backdrop, badge_style, label_style, badge_size, position, badge_direction, badge_appearance, ratings_limit, ratings_order, ratings_exclude);
+    let mut preview_settings = preview_render_settings(cache::ImageType::Backdrop, badge_style, label_style, badge_size, position, badge_direction, badge_appearance, ratings_limit, ratings_order, ratings_exclude);
+    preview_settings.backdrop_edge_inset_x = edge_inset_x;
+    preview_settings.backdrop_edge_inset_y = edge_inset_y;
     let suffix = serve::settings_cache_suffix_with_ratings(&preview_settings, cache::ImageType::Backdrop, image_size, &ratings_suffix);
     let cache_key = format!("preview-backdrop:{suffix}");
     let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Backdrop, &suffix, "jpg")?;
@@ -342,7 +346,7 @@ pub async fn preview_backdrop(
     let quality = state.config.image_quality;
 
     let buf = tokio::task::spawn_blocking(move || {
-        generate::render_backdrop_sync(backdrop_png, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size)
+        generate::render_backdrop_sync(backdrop_png, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, edge_inset_x, edge_inset_y)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;

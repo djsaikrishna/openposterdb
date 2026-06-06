@@ -170,6 +170,34 @@ async fn preview_cache_differs_for_different_params() {
 }
 
 #[tokio::test]
+async fn preview_backdrop_edge_inset_shifts_only_active_axis() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let fetch = |q: &str| {
+        let app = app.clone();
+        let token = token.clone();
+        let uri = format!("/api/admin/preview/backdrop?{q}");
+        async move {
+            let res = app.oneshot(authed_get(&uri, &token)).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
+            res.into_body().collect().await.unwrap().to_bytes()
+        }
+    };
+
+    // Top-right anchors to both edges → both insets change the rendered image.
+    let base = fetch("position=tr").await;
+    assert_ne!(base, fetch("position=tr&edge_inset_x=12").await);
+    assert_ne!(base, fetch("position=tr&edge_inset_y=8").await);
+
+    // Top-center is horizontally centered → the horizontal inset is a no-op and
+    // must reuse the same cache key / image, while the vertical inset applies.
+    let tc = fetch("position=tc").await;
+    assert_eq!(tc, fetch("position=tc&edge_inset_x=12").await);
+    assert_ne!(tc, fetch("position=tc&edge_inset_y=8").await);
+}
+
+#[tokio::test]
 async fn preview_cache_populates_entry_count() {
     let (app, state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;

@@ -51,6 +51,9 @@ struct LbRenderParams {
     label_style: LabelStyle,
     badge_size: BadgeSize,
     appearance: BadgeAppearance,
+    /// Backdrop edge insets (percent of dimension). Zero for logos.
+    edge_inset_x: i32,
+    edge_inset_y: i32,
 }
 
 impl LbRenderParams {
@@ -80,7 +83,15 @@ impl LbRenderParams {
             LogoBackdropKind::Logo => settings.logo_appearance(),
             LogoBackdropKind::Backdrop => settings.backdrop_appearance(),
         };
-        Self { position, badge_direction, badge_style, label_style, badge_size, appearance }
+        // Edge insets are backdrop-only; logos render at a fixed anchor.
+        let (edge_inset_x, edge_inset_y) = match lb_kind {
+            LogoBackdropKind::Logo => (0, 0),
+            LogoBackdropKind::Backdrop => (
+                crate::services::db::clamp_edge_inset(settings.backdrop_edge_inset_x),
+                crate::services::db::clamp_edge_inset(settings.backdrop_edge_inset_y),
+            ),
+        };
+        Self { position, badge_direction, badge_style, label_style, badge_size, appearance, edge_inset_x, edge_inset_y }
     }
 }
 
@@ -112,6 +123,24 @@ pub fn badge_shape_cache_suffix(shape: &str) -> String {
 /// Returns a cache key suffix for badge background.
 pub fn badge_background_cache_suffix(background: &str) -> String {
     format!(".bg{background}")
+}
+
+/// Returns a cache key suffix for the backdrop edge inset.
+///
+/// Empty when the (position-gated) inset is zero, so the default configuration
+/// keeps its existing cache keys — no migration needed. This mirrors the
+/// optional `.x1` (poster split) and `.blur` (episode) tokens. Each axis is only
+/// tokenized when it actually affects placement: horizontal for left/right
+/// positions, vertical for top/bottom positions.
+pub fn edge_inset_cache_suffix(position: BadgePosition, inset_x: i32, inset_y: i32) -> String {
+    let mut out = String::new();
+    if (position.is_left() || position.is_right()) && inset_x > 0 {
+        out.push_str(&format!(".eh{inset_x}"));
+    }
+    if (position.is_top() || position.is_bottom()) && inset_y > 0 {
+        out.push_str(&format!(".ev{inset_y}"));
+    }
+    out
 }
 
 /// Resolve an optional image size, defaulting to Medium.
@@ -183,6 +212,8 @@ pub fn settings_cache_suffix_with_ratings(
         backdrop_badge_size: _,
         backdrop_position: _,
         backdrop_badge_direction: _,
+        backdrop_edge_inset_x: _,
+        backdrop_edge_inset_y: _,
         episode_ratings_limit: _,
         episode_badge_style: _,
         episode_label_style: _,
@@ -243,7 +274,10 @@ pub fn settings_cache_suffix_with_ratings(
             let bsz = settings.backdrop_badge_size.cache_suffix();
             let shp = badge_shape_cache_suffix(settings.backdrop_badge_shape.as_str());
             let bgd = badge_background_cache_suffix(settings.backdrop_badge_background.as_str());
-            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{is_suffix}")
+            // Edge inset sits after background (before image size) and is only
+            // present when non-zero, so default backdrop keys are unchanged.
+            let ei = edge_inset_cache_suffix(settings.backdrop_position, settings.backdrop_edge_inset_x, settings.backdrop_edge_inset_y);
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{ei}{is_suffix}")
         }
         cache::ImageType::Episode => {
             let ps = position_cache_suffix(settings.episode_position.as_str());
@@ -1165,7 +1199,7 @@ fn trigger_logo_backdrop_refresh(
         };
         let bytes = match lb_kind {
             LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), params.badge_style, params.label_style, params.appearance, state2.render_semaphore.clone(), target_width, badge_scale).await?,
-            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.image_quality, params.position, params.badge_style, params.label_style, params.appearance, params.badge_direction, state2.render_semaphore.clone(), target_width, badge_scale, params.badge_size).await?,
+            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.image_quality, params.position, params.badge_style, params.label_style, params.appearance, params.badge_direction, state2.render_semaphore.clone(), target_width, badge_scale, params.badge_size, params.edge_inset_x, params.edge_inset_y).await?,
         };
 
         Ok((bytes, cross_ids.release_date.clone(), image_type, cross_ids))
@@ -1901,6 +1935,8 @@ pub async fn handle_logo_backdrop_inner(
         type_position: BadgePosition,
         type_badge_direction: BadgeDirection,
         type_badge_size: BadgeSize,
+        type_edge_inset_x: i32,
+        type_edge_inset_y: i32,
         badge_size_factor: f32,
         label: &'static str,
         resolved: id::ResolvedId,
@@ -1923,6 +1959,8 @@ pub async fn handle_logo_backdrop_inner(
         type_position: params.position,
         type_badge_direction: params.badge_direction,
         type_badge_size: params.badge_size,
+        type_edge_inset_x: params.edge_inset_x,
+        type_edge_inset_y: params.edge_inset_y,
         badge_size_factor: params.badge_size.scale_factor(),
         label,
         resolved: resolved.clone(),
@@ -2006,7 +2044,7 @@ pub async fn handle_logo_backdrop_inner(
             };
             let bytes = match lb_kind {
                 LogoBackdropKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
-                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_position, ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.type_badge_direction, ctx.state.render_semaphore.clone(), target_width, badge_scale, ctx.type_badge_size).await?,
+                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_position, ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.type_badge_direction, ctx.state.render_semaphore.clone(), target_width, badge_scale, ctx.type_badge_size, ctx.type_edge_inset_x, ctx.type_edge_inset_y).await?,
             };
 
             let release_date = ctx.cross_ids.release_date.clone();
@@ -2521,6 +2559,51 @@ mod tests {
         let p = LbRenderParams::from_settings(LogoBackdropKind::Backdrop, &settings);
         assert_eq!(p.badge_direction, BadgeDirection::Vertical);
         assert_eq!(p.badge_style, BadgeStyle::Vertical);
+    }
+
+    #[test]
+    fn lb_render_params_backdrop_reads_edge_insets() {
+        let settings = RenderSettings {
+            backdrop_position: BadgePosition::TopRight,
+            backdrop_edge_inset_x: 8,
+            backdrop_edge_inset_y: 3,
+            ..RenderSettings::default()
+        };
+        let p = LbRenderParams::from_settings(LogoBackdropKind::Backdrop, &settings);
+        assert_eq!(p.edge_inset_x, 8);
+        assert_eq!(p.edge_inset_y, 3);
+        // Logos never inset.
+        let logo = LbRenderParams::from_settings(LogoBackdropKind::Logo, &settings);
+        assert_eq!(logo.edge_inset_x, 0);
+        assert_eq!(logo.edge_inset_y, 0);
+    }
+
+    #[test]
+    fn edge_inset_suffix_only_tokenizes_active_axes() {
+        // Corner: both axes apply.
+        assert_eq!(edge_inset_cache_suffix(BadgePosition::TopRight, 8, 3), ".eh8.ev3");
+        assert_eq!(edge_inset_cache_suffix(BadgePosition::BottomLeft, 5, 10), ".eh5.ev10");
+        // Right edge is vertically centered → vertical inset is dropped.
+        assert_eq!(edge_inset_cache_suffix(BadgePosition::Right, 8, 3), ".eh8");
+        // Top center is horizontally centered → horizontal inset is dropped.
+        assert_eq!(edge_inset_cache_suffix(BadgePosition::TopCenter, 8, 3), ".ev3");
+        // Zero (or default) insets add no token, so existing keys are unchanged.
+        assert_eq!(edge_inset_cache_suffix(BadgePosition::TopRight, 0, 0), "");
+    }
+
+    #[test]
+    fn backdrop_cache_suffix_includes_edge_inset_only_when_set() {
+        let base = RenderSettings { backdrop_position: BadgePosition::TopRight, ..RenderSettings::default() };
+        let without = settings_cache_suffix(&base, cache::ImageType::Backdrop, None);
+        let with = settings_cache_suffix(
+            &RenderSettings { backdrop_edge_inset_x: 8, backdrop_edge_inset_y: 3, ..base.clone() },
+            cache::ImageType::Backdrop,
+            None,
+        );
+        // Default (0/0) must match the pre-feature key; a non-zero inset diverges.
+        assert!(!without.contains(".eh") && !without.contains(".ev"));
+        assert!(with.contains(".eh8.ev3"));
+        assert_ne!(without, with);
     }
 
     #[test]
