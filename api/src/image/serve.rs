@@ -218,9 +218,9 @@ pub fn settings_cache_suffix_with_ratings(
             // Split badges onto opposite sides — only tokenized when enabled, so
             // the default (no split) keeps existing cache keys unchanged.
             let split = if settings.poster_badge_split { ".x1" } else { "" };
-            // Poster aspect-ratio fit. `Native` emits no token, so pre-feature
-            // poster cache keys (all native) stay valid for native requests; the
-            // default (Cover) emits a token, intentionally missing those entries.
+            // Poster aspect-ratio fit. `Native` (the default) emits no token, so
+            // pre-feature poster cache keys — all native — stay valid and the
+            // default reuses them. Opting into cover/pad/blur emits a token.
             let fit = settings.poster_fit.cache_suffix();
             // Shape/background sit immediately after badge size (before the
             // optional split token) so the v003 cache-key migration can insert

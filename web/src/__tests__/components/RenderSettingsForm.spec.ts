@@ -26,7 +26,7 @@ const defaultSettings: RenderSettings = {
   backdrop_label_style: 'i',
   poster_badge_direction: 'd',
   poster_badge_split: false,
-  poster_fit: 'cover',
+  poster_fit: 'native',
   poster_badge_size: 'm',
   logo_badge_size: 'm',
   backdrop_badge_size: 'm',
@@ -93,7 +93,7 @@ describe('RenderSettingsForm', () => {
     mountForm({}, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(3, 'mal,imdb,lb,rt,rta,mc,tmdb,trakt,mdblist,ebert', 'bc', 'h', 'i', 'd', 'm', '', false, 'r', 'd', 'cover')
+    expect(fetchPreview).toHaveBeenCalledWith(3, 'mal,imdb,lb,rt,rta,mc,tmdb,trakt,mdblist,ebert', 'bc', 'h', 'i', 'd', 'm', '', false, 'r', 'd', 'native')
   })
 
   it('calls fetchPreview with correct params for custom settings', async () => {
@@ -101,7 +101,7 @@ describe('RenderSettingsForm', () => {
     mountForm({ ratings_limit: 5, ratings_order: 'imdb,rt,tmdb' }, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(5, expect.stringContaining('imdb'), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), '', false, 'r', 'd', 'cover')
+    expect(fetchPreview).toHaveBeenCalledWith(5, expect.stringContaining('imdb'), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), '', false, 'r', 'd', 'native')
   })
 
   it('sets preview src from blob after fetch', async () => {
@@ -128,7 +128,7 @@ describe('RenderSettingsForm', () => {
     vi.advanceTimersByTime(500)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(5, expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), '', false, 'r', 'd', 'cover')
+    expect(fetchPreview).toHaveBeenCalledWith(5, expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), '', false, 'r', 'd', 'native')
   })
 
   it('shows loading state while preview loads', async () => {
@@ -185,7 +185,7 @@ describe('RenderSettingsForm', () => {
     mountForm({ poster_position: 'l' }, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'l', 'h', 'i', 'd', 'm', '', false, 'r', 'd', 'cover')
+    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'l', 'h', 'i', 'd', 'm', '', false, 'r', 'd', 'native')
   })
 
   it('hides fanart checkbox when fanart_available is false', () => {
@@ -285,7 +285,7 @@ describe('RenderSettingsForm', () => {
     mountForm({ poster_badge_direction: 'v' }, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'bc', 'h', 'i', 'v', 'm', '', false, 'r', 'd', 'cover')
+    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'bc', 'h', 'i', 'v', 'm', '', false, 'r', 'd', 'native')
   })
 
   // --- Episode preview ---

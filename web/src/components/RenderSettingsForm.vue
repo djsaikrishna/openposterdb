@@ -91,7 +91,7 @@ const editLogoLabelStyle = ref(props.settings.logo_label_style || 'o')
 const editBackdropLabelStyle = ref(props.settings.backdrop_label_style || 'o')
 const editPosterBadgeDirection = ref(props.settings.poster_badge_direction || 'd')
 const editPosterBadgeSplit = ref(props.settings.poster_badge_split ?? false)
-const editPosterFit = ref(props.settings.poster_fit || 'cover')
+const editPosterFit = ref(props.settings.poster_fit || 'native')
 const editPosterBadgeSize = ref(props.settings.poster_badge_size || 'm')
 const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
@@ -131,7 +131,7 @@ function applySettings(s: RenderSettings) {
   editBackdropLabelStyle.value = s.backdrop_label_style || 'o'
   editPosterBadgeDirection.value = s.poster_badge_direction || 'd'
   editPosterBadgeSplit.value = s.poster_badge_split ?? false
-  editPosterFit.value = s.poster_fit || 'cover'
+  editPosterFit.value = s.poster_fit || 'native'
   editPosterBadgeSize.value = s.poster_badge_size || 'm'
   editLogoBadgeSize.value = s.logo_badge_size || 'm'
   editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
@@ -670,10 +670,10 @@ function toggleExclude(key: string, checked: boolean) {
                 <SelectValue placeholder="Select fit" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="native">Native (source ratio)</SelectItem>
                 <SelectItem value="cover">Crop to 2:3</SelectItem>
                 <SelectItem value="blur">Blur fill to 2:3</SelectItem>
                 <SelectItem value="pad">Letterbox to 2:3</SelectItem>
-                <SelectItem value="native">Native (source ratio)</SelectItem>
               </SelectContent>
             </Select>
             <p class="text-xs text-muted-foreground">

@@ -770,11 +770,11 @@ impl PosterFit {
         }
     }
 
-    /// Cache key suffix. `Native` returns an empty string so that poster cache
-    /// keys written before this feature existed (all rendered natively) stay
-    /// valid for native requests and aren't needlessly invalidated. The new
-    /// default (`Cover`) emits a token, so default requests miss the old
-    /// native-keyed entries and re-render — which is the intended behavior.
+    /// Cache key suffix. `Native` (the default) returns an empty string so that
+    /// poster cache keys written before this feature existed — all rendered
+    /// natively — remain valid and the default behavior reuses them with no
+    /// re-render. Opting into `cover`/`pad`/`blur` emits a token, producing a
+    /// distinct cache entry.
     pub fn cache_suffix(self) -> &'static str {
         match self {
             Self::Native => "",
@@ -787,9 +787,10 @@ impl PosterFit {
 
 impl_str_enum!(PosterFit);
 
-/// Default poster fit: center-crop to the standard 2:3 frame.
+/// Default poster fit: `Native` (keep the source aspect ratio — legacy
+/// behavior). Normalization to 2:3 (`cover`/`pad`/`blur`) is opt-in.
 pub fn default_poster_fit() -> PosterFit {
-    PosterFit::Cover
+    PosterFit::Native
 }
 
 /// Validate ratings_limit is 0–10 (one slot per available rating source).
@@ -1577,7 +1578,7 @@ mod tests {
         assert_eq!(defaults.poster_badge_size, BadgeSize::Medium);
         assert_eq!(defaults.logo_badge_size, BadgeSize::Medium);
         assert_eq!(defaults.backdrop_badge_size, BadgeSize::Medium);
-        assert_eq!(defaults.poster_fit, PosterFit::Cover);
+        assert_eq!(defaults.poster_fit, PosterFit::Native);
         assert!(defaults.is_default);
     }
 
@@ -1587,7 +1588,7 @@ mod tests {
             assert_eq!(PosterFit::parse(f.as_str()).unwrap(), f);
         }
         assert!(PosterFit::parse("bogus").is_err());
-        assert_eq!(default_poster_fit(), PosterFit::Cover);
+        assert_eq!(default_poster_fit(), PosterFit::Native);
         // Native must keep an empty token so pre-feature poster cache keys survive.
         assert_eq!(PosterFit::Native.cache_suffix(), "");
         assert_eq!(PosterFit::Cover.cache_suffix(), ".fc");
