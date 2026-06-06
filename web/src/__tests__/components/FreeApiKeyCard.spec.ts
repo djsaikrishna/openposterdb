@@ -81,8 +81,19 @@ function mountCard(freeApiKeyEnabled = true, defaults: FreeKeyDefaults | null = 
         CollapsibleContent: { template: '<div><slot /></div>' },
         Input: {
           name: 'Input',
-          template: '<input :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+          // Mirror Vue's real v-model coercion: a `type="number"` input yields a
+          // Number (the real shadcn Input wraps a native input, so the card's
+          // refs receive numbers — string-only handling would break at runtime).
+          template: '<input :value="modelValue" :placeholder="placeholder" @input="onInput" />',
           props: ['modelValue', 'type', 'placeholder', 'required', 'id'],
+          emits: ['update:modelValue'],
+          methods: {
+            onInput(e: Event) {
+              const raw = (e.target as HTMLInputElement).value
+              const val = this.type === 'number' && raw !== '' && !Number.isNaN(Number(raw)) ? Number(raw) : raw
+              this.$emit('update:modelValue', val)
+            },
+          },
         },
         Button: {
           template: '<button :disabled="disabled" :type="type" @click="$emit(\'click\')"><slot /></button>',

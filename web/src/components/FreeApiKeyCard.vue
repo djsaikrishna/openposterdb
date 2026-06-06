@@ -66,8 +66,10 @@ const posterSplit = ref('default')
 const posterFit = ref('default')
 // Backdrop-only edge insets (percent of dimension). Empty = use the server
 // default; any entered value (including 0) is sent as an explicit override.
-const edgeInsetX = ref('')
-const edgeInsetY = ref('')
+// A number input's v-model yields a number (Vue coerces `type=number`), so the
+// ref holds string | number and `insetParam` normalises both.
+const edgeInsetX = ref<string | number>('')
+const edgeInsetY = ref<string | number>('')
 const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 // Baseline the user's order is compared against to decide whether to send a
 // `ratings_order` override — the server's order once loaded, else the frontend default.
@@ -221,10 +223,12 @@ watch(imageType, (newType) => {
 const apiBase = import.meta.env.VITE_API_URL || ''
 
 // An edge-inset field is sent as an override only when non-empty; the value is
-// clamped to the server's accepted 0–50 range. Returns null to omit the param.
-function insetParam(raw: string): string | null {
-  if (raw.trim() === '') return null
-  const n = Math.round(Number(raw))
+// clamped to the server's accepted 0–50 range. Accepts the string OR number a
+// number-typed v-model may produce. Returns null to omit the param.
+function insetParam(raw: string | number): string | null {
+  const trimmed = String(raw).trim()
+  if (trimmed === '') return null
+  const n = Math.round(Number(trimmed))
   if (!Number.isFinite(n)) return null
   return String(Math.min(50, Math.max(0, n)))
 }
