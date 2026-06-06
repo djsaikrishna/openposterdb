@@ -32,6 +32,7 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     backdrop_label_style: 'o',
     poster_badge_direction: 'd',
     poster_badge_split: false,
+    poster_fit: 'native',
     poster_badge_size: 'm',
     logo_badge_size: 'm',
     backdrop_badge_size: 'm',
@@ -425,6 +426,22 @@ describe('FreeApiKeyCard', () => {
     await setSelectById(wrapper, 'free-image-type', 'episode')
 
     expect(wrapper.find('#free-textless').exists()).toBe(false)
+  })
+
+  it('adds the poster fit override to the query and clears it for non-poster types', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-fit', 'cover')
+    expect(findCurlCode(wrapper).text()).toContain('fit=cover')
+
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(findCurlCode(wrapper).text()).not.toContain('fit=')
+  })
+
+  it('episode does not show fit control', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+
+    expect(wrapper.find('#free-fit').exists()).toBe(false)
   })
 
   // --- Reflecting the server's global defaults ---

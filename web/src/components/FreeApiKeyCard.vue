@@ -16,6 +16,7 @@ import {
   BADGE_BACKGROUND_LABELS,
   IMAGE_SOURCE_LABELS,
   POSITION_LABELS,
+  POSTER_FIT_LABELS,
 } from '@/lib/constants'
 import RatingsOrderList from '@/components/RatingsOrderList.vue'
 import { Button } from '@/components/ui/button'
@@ -62,6 +63,7 @@ const imagePosition = ref('default')
 const imageSource = ref('default')
 const textless = ref('default')
 const posterSplit = ref('default')
+const posterFit = ref('default')
 const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 // Baseline the user's order is compared against to decide whether to send a
 // `ratings_order` override — the server's order once loaded, else the frontend default.
@@ -175,6 +177,7 @@ const textlessDefaultLabel = computed(() =>
 const splitDefaultLabel = computed(() =>
   defaults.value ? `Split badges: default (${defaults.value.poster_badge_split ? 'Yes' : 'No'})` : 'Split badges: default',
 )
+const fitDefaultLabel = computed(() => annotate('Fit', defaults.value?.poster_fit, POSTER_FIT_LABELS))
 const blurDefaultLabel = computed(() =>
   defaults.value ? `Blur: default (${defaults.value.episode_blur ? 'Yes' : 'No'})` : 'Blur: default',
 )
@@ -200,6 +203,7 @@ watch(imageType, (newType) => {
   // free of params the new type would ignore.
   textless.value = 'default'
   posterSplit.value = 'default'
+  posterFit.value = 'default'
   blur.value = 'default'
   // image_source is a single global default shared by every type, so it persists
   // across switches — except episode, which doesn't accept the param.
@@ -240,6 +244,7 @@ const queryString = computed(() => {
   if (imageType.value !== 'episode' && imageSource.value !== 'default') params.set('image_source', imageSource.value)
   if (imageType.value === 'poster' && textless.value !== 'default') params.set('textless', textless.value)
   if (imageType.value === 'poster' && posterSplit.value !== 'default') params.set('split', posterSplit.value)
+  if (imageType.value === 'poster' && posterFit.value !== 'default') params.set('fit', posterFit.value)
   if (imageType.value === 'episode' && blur.value !== 'default') params.set('blur', blur.value)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
@@ -428,6 +433,18 @@ async function handleFetch() {
                 <SelectItem value="default" :key="splitDefaultLabel">{{ splitDefaultLabel }}</SelectItem>
                 <SelectItem value="true">Yes</SelectItem>
                 <SelectItem value="false">No</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-model="posterFit">
+              <SelectTrigger id="free-fit" aria-label="Aspect ratio fit" class="bg-background">
+                <SelectValue placeholder="Fit: default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default" :key="fitDefaultLabel">{{ fitDefaultLabel }}</SelectItem>
+                <SelectItem value="native">Native (source ratio)</SelectItem>
+                <SelectItem value="cover">Crop to 2:3</SelectItem>
+                <SelectItem value="blur">Blur fill to 2:3</SelectItem>
+                <SelectItem value="pad">Letterbox to 2:3</SelectItem>
               </SelectContent>
             </Select>
           </template>

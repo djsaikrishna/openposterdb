@@ -27,7 +27,7 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     backdrop_position: 'tc', backdrop_badge_direction: 'd',
     episode_ratings_limit: 3, episode_badge_style: 'v', episode_label_style: 'o',
     episode_badge_size: 'm', episode_position: 'bc', episode_badge_direction: 'd',
-    episode_blur: false, ...overrides,
+    episode_blur: false, poster_fit: 'native', ...overrides,
   }
 }
 
@@ -99,6 +99,12 @@ describe('FreeApiKeyCard trigger display across image-type switches', () => {
 
     await setSelect(wrapper, 'free-image-type', 'backdrop')
     expect(triggerText(wrapper, 'free-badge-style')).toBe('Badge style: default (Horizontal)')
+  })
+
+  it('reflects the poster fit default annotation', async () => {
+    const wrapper = mountReal(makeDefaults({ poster_fit: 'cover' }))
+    await flushPromises()
+    expect(triggerText(wrapper, 'free-fit')).toBe('Fit: default (Crop to 2:3)')
   })
 
   it('reflects the server default annotation once defaults load after mount', async () => {
