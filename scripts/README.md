@@ -2,6 +2,34 @@
 
 Utility scripts for developing, testing, releasing, and seeding OpenPosterDB.
 
+## dev-worktree.sh
+
+Prepares a freshly created git worktree for local development and runs it. A new
+worktree is missing all the gitignored bits the app needs (`api/.env`, `api/db`,
+`api/cache`, `web/node_modules`); this gets one runnable in a single command.
+
+```bash
+./scripts/dev-worktree.sh              # set up (if needed) then run API + web
+./scripts/dev-worktree.sh --fresh      # also wipe api/db + api/cache first
+./scripts/dev-worktree.sh --release    # build/run the API in release mode
+./scripts/dev-worktree.sh --setup-only # copy env + install deps, don't run
+```
+
+Run it from inside the worktree you want to set up (any subdirectory is fine).
+
+### What it does
+
+1. Copies `api/.env` from the **main** worktree if the current worktree lacks one (never overwrites an existing one).
+2. With `--fresh`, deletes the current worktree's `api/db` and `api/cache` for a clean slate before running. In the **main** worktree this would wipe your primary data, so it asks for confirmation first (or pass `--yes`); in a linked worktree it wipes without asking.
+3. Installs web dependencies (`npm ci`, falling back to `npm install`) if `web/node_modules` is missing.
+4. Runs the Rust API (`cargo run` in `api/`, on `http://localhost:3000`) and the Vite dev server (`npm run dev` in `web/`, usually `http://localhost:5173`) together. Press Ctrl+C — or let either process exit — to stop both.
+
+> The dev UI is served by Vite over plain HTTP at `http://localhost:5173`. If login
+> appears broken, add `COOKIE_SECURE=false` to `api/.env` (see the main README) —
+> otherwise the browser drops the auth cookie.
+
+---
+
 ## seed.sh
 
 Warms the OpenPosterDB cache by requesting posters for titles from the IMDB dataset. Entries are processed newest-first, using `endYear` for series (if available) and `startYear` otherwise.
