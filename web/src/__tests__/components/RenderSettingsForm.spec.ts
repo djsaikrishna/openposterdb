@@ -32,6 +32,8 @@ const defaultSettings: RenderSettings = {
   backdrop_badge_size: 'm',
   backdrop_position: 'tr',
   backdrop_badge_direction: 'v',
+  backdrop_edge_inset_x: 0,
+  backdrop_edge_inset_y: 0,
   episode_ratings_limit: 1,
   episode_badge_style: 'v',
   episode_label_style: 'o',
@@ -368,5 +370,83 @@ describe('RenderSettingsForm', () => {
     expect(wrapper.find('[data-testid="episode-badge-style-select"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="episode-badge-direction-select"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="episode-blur-checkbox"]').exists()).toBe(true)
+  })
+
+  // --- Backdrop edge inset ---
+
+  function mountWithBackdrop(
+    overrides: Partial<RenderSettings> = {},
+    fetchBackdropPreview = makeFetchPreview(),
+    saveSettings = vi.fn().mockResolvedValue(null),
+  ) {
+    const settings = { ...defaultSettings, ...overrides }
+    return mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings,
+        fetchPreview: makeFetchPreview(),
+        fetchBackdropPreview,
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+  }
+
+  it('shows both edge-inset inputs for a corner backdrop position', () => {
+    const wrapper = mountWithBackdrop({ backdrop_position: 'tr' })
+    expect(wrapper.find('[data-testid="backdrop-edge-inset-x"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="backdrop-edge-inset-y"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Space from top')
+    expect(wrapper.text()).toContain('Space from right')
+  })
+
+  it('shows only the vertical edge-inset input for a top-center position', () => {
+    const wrapper = mountWithBackdrop({ backdrop_position: 'tc' })
+    expect(wrapper.find('[data-testid="backdrop-edge-inset-x"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="backdrop-edge-inset-y"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Space from top')
+  })
+
+  it('shows only the horizontal edge-inset input for a right position', () => {
+    const wrapper = mountWithBackdrop({ backdrop_position: 'r' })
+    expect(wrapper.find('[data-testid="backdrop-edge-inset-x"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="backdrop-edge-inset-y"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Space from right')
+  })
+
+  it('passes edge insets to fetchBackdropPreview', async () => {
+    const fetchBackdropPreview = makeFetchPreview()
+    mountWithBackdrop({ backdrop_position: 'tr', backdrop_edge_inset_x: 12, backdrop_edge_inset_y: 7 }, fetchBackdropPreview)
+    await flushPromises()
+
+    expect(fetchBackdropPreview).toHaveBeenCalledWith(
+      3, // backdrop_ratings_limit
+      expect.any(String), // ratings_order
+      'v', // backdrop_badge_style
+      'i', // backdrop_label_style
+      'm', // backdrop_badge_size
+      'tr', // backdrop_position
+      'v', // backdrop_badge_direction
+      '', // ratings_exclude
+      'r', // backdrop_badge_shape
+      'd', // backdrop_badge_background
+      12, // backdrop_edge_inset_x
+      7, // backdrop_edge_inset_y
+    )
+  })
+
+  it('editing a backdrop edge inset auto-saves the new value', async () => {
+    const saveSettings = vi.fn().mockResolvedValue(null)
+    const wrapper = mountWithBackdrop({ backdrop_position: 'tr' }, makeFetchPreview(), saveSettings)
+
+    await wrapper.find('[data-testid="backdrop-edge-inset-y"]').setValue(15)
+    await flushPromises()
+
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ backdrop_edge_inset_y: 15 }),
+    )
   })
 })

@@ -64,6 +64,12 @@ const imageSource = ref('default')
 const textless = ref('default')
 const posterSplit = ref('default')
 const posterFit = ref('default')
+// Backdrop-only edge insets (percent of dimension). Empty = use the server
+// default; any entered value (including 0) is sent as an explicit override.
+// A number input's v-model yields a number (Vue coerces `type=number`), so the
+// ref holds string | number and `insetParam` normalises both.
+const edgeInsetX = ref<string | number>('')
+const edgeInsetY = ref<string | number>('')
 const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 // Baseline the user's order is compared against to decide whether to send a
 // `ratings_order` override — the server's order once loaded, else the frontend default.
@@ -204,6 +210,8 @@ watch(imageType, (newType) => {
   textless.value = 'default'
   posterSplit.value = 'default'
   posterFit.value = 'default'
+  edgeInsetX.value = ''
+  edgeInsetY.value = ''
   blur.value = 'default'
   // image_source is a single global default shared by every type, so it persists
   // across switches — except episode, which doesn't accept the param.
@@ -213,6 +221,17 @@ watch(imageType, (newType) => {
 })
 
 const apiBase = import.meta.env.VITE_API_URL || ''
+
+// An edge-inset field is sent as an override only when non-empty; the value is
+// clamped to the server's accepted 0–50 range. Accepts the string OR number a
+// number-typed v-model may produce. Returns null to omit the param.
+function insetParam(raw: string | number): string | null {
+  const trimmed = String(raw).trim()
+  if (trimmed === '') return null
+  const n = Math.round(Number(trimmed))
+  if (!Number.isFinite(n)) return null
+  return String(Math.min(50, Math.max(0, n)))
+}
 
 onUnmounted(() => {
   if (resultUrl.value) URL.revokeObjectURL(resultUrl.value)
@@ -245,6 +264,12 @@ const queryString = computed(() => {
   if (imageType.value === 'poster' && textless.value !== 'default') params.set('textless', textless.value)
   if (imageType.value === 'poster' && posterSplit.value !== 'default') params.set('split', posterSplit.value)
   if (imageType.value === 'poster' && posterFit.value !== 'default') params.set('fit', posterFit.value)
+  if (imageType.value === 'backdrop') {
+    const ex = insetParam(edgeInsetX.value)
+    if (ex !== null) params.set('edge_inset_x', ex)
+    const ey = insetParam(edgeInsetY.value)
+    if (ey !== null) params.set('edge_inset_y', ey)
+  }
   if (imageType.value === 'episode' && blur.value !== 'default') params.set('blur', blur.value)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
@@ -475,6 +500,34 @@ async function handleFetch() {
                 <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
+          </template>
+          <template v-if="imageType === 'backdrop'">
+            <div class="flex items-center gap-2">
+              <Label for="free-edge-inset-x" class="text-xs text-muted-foreground shrink-0 whitespace-nowrap">Horizontal inset %</Label>
+              <Input
+                id="free-edge-inset-x"
+                v-model="edgeInsetX"
+                type="number"
+                min="0"
+                max="50"
+                :placeholder="`default (${defaults?.backdrop_edge_inset_x ?? 0})`"
+                aria-label="Backdrop horizontal edge inset (percent of width, left/right positions)"
+                class="bg-background min-w-0"
+              />
+            </div>
+            <div class="flex items-center gap-2">
+              <Label for="free-edge-inset-y" class="text-xs text-muted-foreground shrink-0 whitespace-nowrap">Vertical inset %</Label>
+              <Input
+                id="free-edge-inset-y"
+                v-model="edgeInsetY"
+                type="number"
+                min="0"
+                max="50"
+                :placeholder="`default (${defaults?.backdrop_edge_inset_y ?? 0})`"
+                aria-label="Backdrop vertical edge inset (percent of height, top/bottom positions)"
+                class="bg-background min-w-0"
+              />
+            </div>
           </template>
           <template v-if="imageType === 'episode'">
             <Select v-model="blur">

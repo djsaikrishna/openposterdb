@@ -43,6 +43,12 @@ pub struct Model {
     pub logo_badge_background: String,
     pub backdrop_badge_background: String,
     pub episode_badge_background: String,
+    /// Distance (percent of width, 0–50) to inset backdrop ratings from the
+    /// anchored horizontal edge (left or right). Ignored for centered positions.
+    pub backdrop_edge_inset_x: i32,
+    /// Distance (percent of height, 0–50) to inset backdrop ratings from the
+    /// anchored vertical edge (top or bottom). Ignored for centered positions.
+    pub backdrop_edge_inset_y: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

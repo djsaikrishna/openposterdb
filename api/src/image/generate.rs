@@ -150,7 +150,13 @@ pub async fn generate_poster(params: ImageParams<'_>) -> Result<Vec<u8>, AppErro
 }
 
 /// Overlay badges in a vertical column, positioned according to `position`.
-fn overlay_vertical_stack(canvas: &mut RgbaImage, badge_images: &[RgbaImage], position: BadgePosition, badge_scale: f32, side_margin_base: u32) {
+///
+/// `extra_x` / `extra_y` are additional edge insets in pixels (already resolved
+/// for this canvas) that push the badges further from the anchored edge. They
+/// only take effect on the edge the position anchors to: `extra_y` on top/bottom
+/// anchors, `extra_x` on left/right anchors. Centered axes ignore their inset.
+/// Callers that don't want insets pass `0, 0`.
+fn overlay_vertical_stack(canvas: &mut RgbaImage, badge_images: &[RgbaImage], position: BadgePosition, badge_scale: f32, side_margin_base: u32, extra_x: u32, extra_y: u32) {
     let vert_spacing = (BADGE_VERT_SPACING as f32 * badge_scale).round() as u32;
     let top_margin = (BADGE_TOP_MARGIN as f32 * badge_scale).round() as u32;
     let bottom_margin = (BADGE_BOTTOM_MARGIN as f32 * badge_scale).round() as u32;
@@ -162,9 +168,9 @@ fn overlay_vertical_stack(canvas: &mut RgbaImage, badge_images: &[RgbaImage], po
 
     // Vertical anchor
     let start_y = if position.is_top() {
-        top_margin
+        top_margin + extra_y
     } else if position.is_bottom() {
-        canvas.height().saturating_sub(total_badge_height + bottom_margin)
+        canvas.height().saturating_sub(total_badge_height + bottom_margin + extra_y)
     } else {
         // "l", "r" — vertically centered
         (canvas.height().saturating_sub(total_badge_height)) / 2
@@ -175,9 +181,9 @@ fn overlay_vertical_stack(canvas: &mut RgbaImage, badge_images: &[RgbaImage], po
     let is_right = position.is_right();
 
     let base_x = if is_left {
-        side_margin
+        side_margin + extra_x
     } else if is_right {
-        canvas.width().saturating_sub(max_badge_width + side_margin)
+        canvas.width().saturating_sub(max_badge_width + side_margin + extra_x)
     } else {
         // center
         (canvas.width().saturating_sub(max_badge_width)) / 2
@@ -198,7 +204,11 @@ fn overlay_vertical_stack(canvas: &mut RgbaImage, badge_images: &[RgbaImage], po
 }
 
 /// Overlay badges in horizontal rows, positioned according to `position`.
-fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], position: BadgePosition, max_per_row: usize, badge_scale: f32, side_margin_base: u32) {
+///
+/// `extra_x` / `extra_y` behave as in [`overlay_vertical_stack`]: edge insets in
+/// resolved pixels that only apply to the anchored edge (centered axes ignore
+/// them). Callers that don't want insets pass `0, 0`.
+fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], position: BadgePosition, max_per_row: usize, badge_scale: f32, side_margin_base: u32, extra_x: u32, extra_y: u32) {
     let spacing = (BADGE_SPACING as f32 * badge_scale).round() as u32;
     let row_spacing = (BADGE_ROW_SPACING as f32 * badge_scale).round() as u32;
     let top_margin = (BADGE_TOP_MARGIN as f32 * badge_scale).round() as u32;
@@ -212,9 +222,9 @@ fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], p
 
     // Vertical anchor
     let base_y = if position.is_top() {
-        top_margin
+        top_margin + extra_y
     } else if position.is_bottom() {
-        canvas.height().saturating_sub(total_height + bottom_margin)
+        canvas.height().saturating_sub(total_height + bottom_margin + extra_y)
     } else {
         // "l", "r" — vertically centered
         (canvas.height().saturating_sub(total_height)) / 2
@@ -230,9 +240,9 @@ fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], p
         let y = base_y + row_idx as u32 * (badge_height + row_spacing);
 
         let start_x = if is_left {
-            side_margin
+            side_margin + extra_x
         } else if is_right {
-            canvas.width().saturating_sub(row_width + side_margin)
+            canvas.width().saturating_sub(row_width + side_margin + extra_x)
         } else {
             (canvas.width().saturating_sub(row_width)) / 2
         };
@@ -405,9 +415,9 @@ fn overlay_poster_group(
     badge_scale: f32,
 ) {
     if badge_direction.is_vertical() {
-        overlay_vertical_stack(canvas, badge_images, position, badge_scale, BADGE_SIDE_MARGIN);
+        overlay_vertical_stack(canvas, badge_images, position, badge_scale, BADGE_SIDE_MARGIN, 0, 0);
     } else {
-        overlay_horizontal_rows(canvas, badge_images, position, max_per_row, badge_scale, BADGE_SIDE_MARGIN);
+        overlay_horizontal_rows(canvas, badge_images, position, max_per_row, badge_scale, BADGE_SIDE_MARGIN, 0, 0);
     }
 }
 
@@ -611,6 +621,8 @@ pub fn render_backdrop_sync(
     target_width: u32,
     badge_scale: f32,
     _badge_size: BadgeSize,
+    edge_inset_x: i32,
+    edge_inset_y: i32,
 ) -> Result<Vec<u8>, AppError> {
     // A pill is a horizontal lozenge (icon/label left, value right) — never a
     // vertical stacked badge, even when the configured style is vertical.
@@ -634,11 +646,19 @@ pub fn render_backdrop_sync(
             badge::render_badges_uniform(badges, font, label_style, badge_appearance, badge_scale)
         };
 
+        // Edge insets are a percentage of the canvas dimension, so they stay
+        // proportional across image sizes (small/medium/large). The overlay
+        // functions only apply each axis on the edge the position anchors to.
+        let inset_pct_x = edge_inset_x.clamp(0, 100) as f32 / 100.0;
+        let inset_pct_y = edge_inset_y.clamp(0, 100) as f32 / 100.0;
+        let extra_x = (canvas.width() as f32 * inset_pct_x).round() as u32;
+        let extra_y = (canvas.height() as f32 * inset_pct_y).round() as u32;
+
         if badge_direction.is_vertical() {
-            overlay_vertical_stack(&mut canvas, &badge_images, position, badge_scale, BACKDROP_SIDE_MARGIN);
+            overlay_vertical_stack(&mut canvas, &badge_images, position, badge_scale, BACKDROP_SIDE_MARGIN, extra_x, extra_y);
         } else {
             // Backdrops are wide (16:9) so all badges fit in a single row
-            overlay_horizontal_rows(&mut canvas, &badge_images, position, badge_images.len(), badge_scale, BACKDROP_SIDE_MARGIN);
+            overlay_horizontal_rows(&mut canvas, &badge_images, position, badge_images.len(), badge_scale, BACKDROP_SIDE_MARGIN, extra_x, extra_y);
         }
     }
 
@@ -665,6 +685,8 @@ pub async fn generate_backdrop(
     target_width: u32,
     badge_scale: f32,
     badge_size: BadgeSize,
+    edge_inset_x: i32,
+    edge_inset_y: i32,
 ) -> Result<Vec<u8>, AppError> {
     if render_semaphore.available_permits() == 0 {
         tracing::debug!("render queue full, waiting for permit");
@@ -674,7 +696,7 @@ pub async fn generate_backdrop(
     tracing::debug!("backdrop render started");
     let start = std::time::Instant::now();
 
-    let buf = tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size))
+    let buf = tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, edge_inset_x, edge_inset_y))
         .await
         .map_err(|e| AppError::Other(e.to_string()))??;
 
@@ -733,7 +755,7 @@ pub fn render_episode_sync(
         };
 
         if badge_direction.is_vertical() {
-            overlay_vertical_stack(&mut canvas, &badge_images, position, badge_scale, BADGE_SIDE_MARGIN);
+            overlay_vertical_stack(&mut canvas, &badge_images, position, badge_scale, BADGE_SIDE_MARGIN, 0, 0);
         } else {
             let max_per_row = match badge_size {
                 BadgeSize::Large | BadgeSize::ExtraLarge => {
@@ -743,7 +765,7 @@ pub fn render_episode_sync(
                     if badge_style.is_vertical() { MAX_VERT_BADGES_PER_ROW } else { MAX_BADGES_PER_ROW }
                 }
             };
-            overlay_horizontal_rows(&mut canvas, &badge_images, position, max_per_row, badge_scale, BADGE_SIDE_MARGIN);
+            overlay_horizontal_rows(&mut canvas, &badge_images, position, max_per_row, badge_scale, BADGE_SIDE_MARGIN, 0, 0);
         }
     }
 
@@ -920,7 +942,7 @@ mod tests {
     fn render_backdrop_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(640, 360);
-        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         // Backdrop outputs JPEG
         assert_eq!(result[0], 0xFF);
@@ -937,7 +959,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -948,7 +970,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Create a backdrop wider than TARGET_WIDTH (1280)
         let png = test_png(2560, 1440);
-        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -957,7 +979,7 @@ mod tests {
     #[test]
     fn render_backdrop_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_backdrop_sync(b"not an image", &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium);
+        let result = render_backdrop_sync(b"not an image", &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0);
         assert!(result.is_err());
     }
 
@@ -971,7 +993,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -989,7 +1011,7 @@ mod tests {
             RatingBadge { source: RatingSource::RtAudience, value: "80%".to_string() },
         ];
         // Large + Horizontal style — all badges in a single row on wide backdrop
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 1.0, BadgeSize::Large).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 1.0, BadgeSize::Large, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1004,10 +1026,40 @@ mod tests {
         let badges = vec![
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomLeft, BadgeStyle::Vertical, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomLeft, BadgeStyle::Vertical, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_backdrop_edge_inset_shifts_only_active_axis() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(1280, 720);
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
+        ];
+        let render = |pos: BadgePosition, x: i32, y: i32| {
+            render_backdrop_sync(&png, &badges, &font, 85, pos, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, x, y).unwrap()
+        };
+
+        // TopRight anchors to both a horizontal and vertical edge, so both insets
+        // move the badges (the JPEG encoder is deterministic, so bytes differ).
+        assert_ne!(render(BadgePosition::TopRight, 0, 0), render(BadgePosition::TopRight, 10, 0));
+        assert_ne!(render(BadgePosition::TopRight, 0, 0), render(BadgePosition::TopRight, 0, 10));
+
+        // TopCenter is horizontally centered → the horizontal inset is a no-op,
+        // but the vertical inset still applies.
+        assert_eq!(render(BadgePosition::TopCenter, 0, 0), render(BadgePosition::TopCenter, 10, 0));
+        assert_ne!(render(BadgePosition::TopCenter, 0, 0), render(BadgePosition::TopCenter, 0, 10));
+
+        // Right is vertically centered → the vertical inset is a no-op, but the
+        // horizontal inset still applies.
+        assert_eq!(render(BadgePosition::Right, 0, 0), render(BadgePosition::Right, 0, 10));
+        assert_ne!(render(BadgePosition::Right, 0, 0), render(BadgePosition::Right, 10, 0));
     }
 
     // --- Episode rendering tests ---
@@ -1189,7 +1241,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1237,7 +1289,7 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
             RatingBadge { source: RatingSource::RtAudience, value: "40%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1350,7 +1402,7 @@ mod tests {
         let png = test_png(640, 360);
         let sem = Arc::new(Semaphore::new(1));
 
-        let result = generate_backdrop(png, vec![], font, 85, BadgePosition::TopRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, sem.clone(), 1280, 1.0, BadgeSize::Medium).await;
+        let result = generate_backdrop(png, vec![], font, 85, BadgePosition::TopRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, sem.clone(), 1280, 1.0, BadgeSize::Medium, 0, 0).await;
         assert!(result.is_ok());
         assert_eq!(sem.available_permits(), 1);
     }
@@ -1362,7 +1414,7 @@ mod tests {
         let sem = Arc::new(Semaphore::new(1));
         sem.close();
 
-        let result = generate_backdrop(png, vec![], font, 85, BadgePosition::TopRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, sem, 1280, 1.0, BadgeSize::Medium).await;
+        let result = generate_backdrop(png, vec![], font, 85, BadgePosition::TopRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, sem, 1280, 1.0, BadgeSize::Medium, 0, 0).await;
         assert!(result.is_err());
     }
 
@@ -1692,7 +1744,7 @@ mod tests {
     fn render_backdrop_at_large_target_width() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(640, 360);
-        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 3840, 2.0, BadgeSize::Medium).unwrap();
+        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 3840, 2.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);

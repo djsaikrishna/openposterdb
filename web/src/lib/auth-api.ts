@@ -29,6 +29,8 @@ export interface FreeKeyDefaults {
   backdrop_badge_size: string
   backdrop_position: string
   backdrop_badge_direction: string
+  backdrop_edge_inset_x: number
+  backdrop_edge_inset_y: number
   episode_ratings_limit: number
   episode_badge_style: string
   episode_label_style: string

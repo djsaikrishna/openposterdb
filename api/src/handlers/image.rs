@@ -118,6 +118,16 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub fit: Option<PosterFit>,
+    /// Distance (0–50, percent of width) to inset backdrop ratings from the
+    /// anchored horizontal edge (backdrop only). Ignored for centered positions.
+    #[serde(default)]
+    #[param(value_type = Option<i32>)]
+    pub edge_inset_x: Option<i32>,
+    /// Distance (0–50, percent of height) to inset backdrop ratings from the
+    /// anchored vertical edge (backdrop only). Ignored for centered positions.
+    #[serde(default)]
+    #[param(value_type = Option<i32>)]
+    pub edge_inset_y: Option<i32>,
 }
 
 impl ImageQuery {
@@ -138,6 +148,8 @@ impl ImageQuery {
             || self.blur.is_some()
             || self.split.is_some()
             || self.fit.is_some()
+            || self.edge_inset_x.is_some()
+            || self.edge_inset_y.is_some()
     }
 }
 
@@ -193,6 +205,8 @@ pub struct FreeKeySettingsResponse {
     pub backdrop_badge_size: BadgeSize,
     pub backdrop_position: BadgePosition,
     pub backdrop_badge_direction: BadgeDirection,
+    pub backdrop_edge_inset_x: i32,
+    pub backdrop_edge_inset_y: i32,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: BadgeStyle,
     pub episode_label_style: LabelStyle,
@@ -236,6 +250,8 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             backdrop_badge_size: s.backdrop_badge_size,
             backdrop_position: s.backdrop_position,
             backdrop_badge_direction: s.backdrop_badge_direction,
+            backdrop_edge_inset_x: s.backdrop_edge_inset_x,
+            backdrop_edge_inset_y: s.backdrop_edge_inset_y,
             episode_ratings_limit: s.episode_ratings_limit,
             episode_badge_style: s.episode_badge_style,
             episode_label_style: s.episode_label_style,
@@ -450,6 +466,12 @@ fn apply_query_overrides(
         }
         if let Some(pos) = query.position {
             s.backdrop_position = pos;
+        }
+        if let Some(inset) = query.edge_inset_x {
+            s.backdrop_edge_inset_x = db::clamp_edge_inset(inset);
+        }
+        if let Some(inset) = query.edge_inset_y {
+            s.backdrop_edge_inset_y = db::clamp_edge_inset(inset);
         }
     }
     if kind == cache::ImageType::Episode {
@@ -876,6 +898,8 @@ mod tests {
             blur: None,
             split: None,
             fit: None,
+            edge_inset_x: None,
+            edge_inset_y: None,
         }
     }
 
@@ -978,6 +1002,50 @@ mod tests {
         // Poster fields unchanged
         assert_eq!(result.poster_position, original_poster_position);
         assert_eq!(result.poster_badge_direction, original_poster_direction);
+    }
+
+    #[test]
+    fn apply_query_overrides_backdrop_edge_inset() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            edge_inset_x: Some(12),
+            edge_inset_y: Some(7),
+            ..empty_query()
+        };
+        let result =
+            apply_query_overrides(settings, &query, cache::ImageType::Backdrop).unwrap();
+        assert_eq!(result.backdrop_edge_inset_x, 12);
+        assert_eq!(result.backdrop_edge_inset_y, 7);
+    }
+
+    #[test]
+    fn apply_query_overrides_clamps_out_of_range_edge_inset() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            edge_inset_x: Some(999),
+            edge_inset_y: Some(-5),
+            ..empty_query()
+        };
+        let result =
+            apply_query_overrides(settings, &query, cache::ImageType::Backdrop).unwrap();
+        assert_eq!(result.backdrop_edge_inset_x, db::MAX_EDGE_INSET);
+        assert_eq!(result.backdrop_edge_inset_y, 0);
+    }
+
+    #[test]
+    fn apply_query_overrides_edge_inset_ignored_for_poster() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            edge_inset_x: Some(20),
+            edge_inset_y: Some(20),
+            ..empty_query()
+        };
+        // edge_inset counts as an override (forces a fresh Arc) but only the
+        // backdrop path consumes it — posters are unaffected.
+        let result =
+            apply_query_overrides(settings, &query, cache::ImageType::Poster).unwrap();
+        assert_eq!(result.backdrop_edge_inset_x, 0);
+        assert_eq!(result.backdrop_edge_inset_y, 0);
     }
 
     #[test]

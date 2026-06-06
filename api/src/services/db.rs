@@ -659,6 +659,21 @@ pub fn default_backdrop_badge_direction() -> BadgeDirection {
     BadgeDirection::Default
 }
 
+/// Maximum backdrop edge inset, expressed as a percentage of the image
+/// dimension. Capped at half so the inset can never push past the centre.
+pub const MAX_EDGE_INSET: i32 = 50;
+
+pub fn default_backdrop_edge_inset() -> i32 {
+    0
+}
+
+/// Clamp a stored/requested edge inset to the supported `0..=MAX_EDGE_INSET`
+/// range so out-of-range values can never produce runaway cache keys or
+/// nonsensical placement.
+pub fn clamp_edge_inset(value: i32) -> i32 {
+    value.clamp(0, MAX_EDGE_INSET)
+}
+
 // --- Badge size ---
 
 pub fn default_badge_size() -> BadgeSize {
@@ -2003,6 +2018,8 @@ pub struct UpsertApiKeySettings<'a> {
     pub logo_badge_background: &'a str,
     pub backdrop_badge_background: &'a str,
     pub episode_badge_background: &'a str,
+    pub backdrop_edge_inset_x: i32,
+    pub backdrop_edge_inset_y: i32,
 }
 
 pub async fn upsert_api_key_settings(
@@ -2049,6 +2066,8 @@ pub async fn upsert_api_key_settings(
         logo_badge_background: Set(params.logo_badge_background.to_string()),
         backdrop_badge_background: Set(params.backdrop_badge_background.to_string()),
         episode_badge_background: Set(params.episode_badge_background.to_string()),
+        backdrop_edge_inset_x: Set(params.backdrop_edge_inset_x),
+        backdrop_edge_inset_y: Set(params.backdrop_edge_inset_y),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -2092,6 +2111,8 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::LogoBadgeBackground,
                     api_key_settings::Column::BackdropBadgeBackground,
                     api_key_settings::Column::EpisodeBadgeBackground,
+                    api_key_settings::Column::BackdropEdgeInsetX,
+                    api_key_settings::Column::BackdropEdgeInsetY,
                 ])
                 .to_owned(),
         )
@@ -2143,6 +2164,12 @@ pub struct RenderSettings {
     pub backdrop_badge_size: BadgeSize,
     pub backdrop_position: BadgePosition,
     pub backdrop_badge_direction: BadgeDirection,
+    /// Inset (percent of width) of backdrop ratings from the anchored
+    /// horizontal edge. Only applies to left/right positions.
+    pub backdrop_edge_inset_x: i32,
+    /// Inset (percent of height) of backdrop ratings from the anchored
+    /// vertical edge. Only applies to top/bottom positions.
+    pub backdrop_edge_inset_y: i32,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: BadgeStyle,
     pub episode_label_style: LabelStyle,
@@ -2206,6 +2233,8 @@ impl Default for RenderSettings {
             backdrop_badge_size: BadgeSize::Medium,
             backdrop_position: default_backdrop_position(),
             backdrop_badge_direction: default_backdrop_badge_direction(),
+            backdrop_edge_inset_x: default_backdrop_edge_inset(),
+            backdrop_edge_inset_y: default_backdrop_edge_inset(),
             episode_ratings_limit: default_episode_ratings_limit(),
             episode_badge_style: default_episode_badge_style(),
             episode_label_style: default_label_style(),
@@ -2278,6 +2307,16 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         backdrop_badge_size: global_or(globals, "backdrop_badge_size", BadgeSize::parse, defaults.backdrop_badge_size),
         backdrop_position: global_or(globals, "backdrop_position", BadgePosition::parse, defaults.backdrop_position),
         backdrop_badge_direction: global_or(globals, "backdrop_badge_direction", BadgeDirection::parse, defaults.backdrop_badge_direction),
+        backdrop_edge_inset_x: globals
+            .get("backdrop_edge_inset_x")
+            .and_then(|v| v.parse().ok())
+            .map(clamp_edge_inset)
+            .unwrap_or(defaults.backdrop_edge_inset_x),
+        backdrop_edge_inset_y: globals
+            .get("backdrop_edge_inset_y")
+            .and_then(|v| v.parse().ok())
+            .map(clamp_edge_inset)
+            .unwrap_or(defaults.backdrop_edge_inset_y),
         episode_ratings_limit: globals
             .get("episode_ratings_limit")
             .and_then(|v| v.parse().ok())
@@ -2335,6 +2374,8 @@ pub async fn get_effective_render_settings(
                 backdrop_badge_size: parse_setting_or_default(&s.backdrop_badge_size, "backdrop_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 backdrop_position: parse_setting_or_default(&s.backdrop_position, "backdrop_position", BadgePosition::parse, default_backdrop_position()),
                 backdrop_badge_direction: parse_setting_or_default(&s.backdrop_badge_direction, "backdrop_badge_direction", BadgeDirection::parse, default_backdrop_badge_direction()),
+                backdrop_edge_inset_x: clamp_edge_inset(s.backdrop_edge_inset_x),
+                backdrop_edge_inset_y: clamp_edge_inset(s.backdrop_edge_inset_y),
                 episode_ratings_limit: s.episode_ratings_limit,
                 episode_badge_style: parse_setting_or_default(&s.episode_badge_style, "episode_badge_style", BadgeStyle::parse, default_episode_badge_style()),
                 episode_label_style: parse_setting_or_default(&s.episode_label_style, "episode_label_style", LabelStyle::parse, LabelStyle::Official),

@@ -38,6 +38,8 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     backdrop_badge_size: 'm',
     backdrop_position: 'bc',
     backdrop_badge_direction: 'd',
+    backdrop_edge_inset_x: 0,
+    backdrop_edge_inset_y: 0,
     episode_ratings_limit: 3,
     episode_badge_style: 'v',
     episode_label_style: 'o',
@@ -79,8 +81,19 @@ function mountCard(freeApiKeyEnabled = true, defaults: FreeKeyDefaults | null = 
         CollapsibleContent: { template: '<div><slot /></div>' },
         Input: {
           name: 'Input',
-          template: '<input :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+          // Mirror Vue's real v-model coercion: a `type="number"` input yields a
+          // Number (the real shadcn Input wraps a native input, so the card's
+          // refs receive numbers — string-only handling would break at runtime).
+          template: '<input :value="modelValue" :placeholder="placeholder" @input="onInput" />',
           props: ['modelValue', 'type', 'placeholder', 'required', 'id'],
+          emits: ['update:modelValue'],
+          methods: {
+            onInput(e: Event) {
+              const raw = (e.target as HTMLInputElement).value
+              const val = this.type === 'number' && raw !== '' && !Number.isNaN(Number(raw)) ? Number(raw) : raw
+              this.$emit('update:modelValue', val)
+            },
+          },
         },
         Button: {
           template: '<button :disabled="disabled" :type="type" @click="$emit(\'click\')"><slot /></button>',
@@ -337,6 +350,53 @@ describe('FreeApiKeyCard', () => {
     expect(curlText).toContain('badge_direction=v')
     expect(curlText).toContain('position=tr')
     expect(curlText).toContain('blur=true')
+  })
+
+  // --- Backdrop edge inset support ---
+
+  it('edge inset inputs appear only for backdrop image type', async () => {
+    const wrapper = mountCard(true)
+    const insetX = () => wrapper.find('input[aria-label*="horizontal edge inset"]')
+    // Default poster — no edge inset inputs
+    expect(insetX().exists()).toBe(false)
+
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    expect(insetX().exists()).toBe(true)
+    expect(wrapper.find('input[aria-label*="vertical edge inset"]').exists()).toBe(true)
+
+    // Switch to logo — inputs disappear
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(insetX().exists()).toBe(false)
+  })
+
+  it('backdrop queryString includes edge_inset_x/y when set', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    await wrapper.find('input[aria-label*="horizontal edge inset"]').setValue('12')
+    await wrapper.find('input[aria-label*="vertical edge inset"]').setValue('7')
+
+    const curl = findCurlCode(wrapper).text()
+    expect(curl).toContain('edge_inset_x=12')
+    expect(curl).toContain('edge_inset_y=7')
+  })
+
+  it('clamps backdrop edge inset to the accepted 0–50 range', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    await wrapper.find('input[aria-label*="horizontal edge inset"]').setValue('999')
+    expect(findCurlCode(wrapper).text()).toContain('edge_inset_x=50')
+  })
+
+  it('resets backdrop edge insets when switching image type', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    await wrapper.find('input[aria-label*="horizontal edge inset"]').setValue('20')
+    expect(findCurlCode(wrapper).text()).toContain('edge_inset_x=20')
+
+    // Switch away and back — the override should have been cleared.
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    expect(findCurlCode(wrapper).text()).not.toContain('edge_inset_x=')
   })
 
   it('blur selector only appears for episode image type', async () => {
