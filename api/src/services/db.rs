@@ -721,6 +721,78 @@ impl BadgeSize {
 
 impl_str_enum!(BadgeSize);
 
+// --- Poster aspect-ratio fit ---
+
+const FIT_NATIVE: &str = "native";
+const FIT_COVER: &str = "cover";
+const FIT_PAD: &str = "pad";
+const FIT_BLUR: &str = "blur";
+
+/// How a poster is fit to the standard 2:3 output frame.
+///
+/// Downstream apps (Stremio addons, aiometadata) place posters in fixed 2:3
+/// containers, so a non-2:3 source poster gets cropped by the client — cutting
+/// off the title/logo baked into the art (issue #15). Every mode except
+/// `Native` normalizes the output to an exact 2:3 frame so nothing is clipped
+/// by the consumer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PosterFit {
+    /// Keep the source aspect ratio (legacy behavior, no normalization).
+    Native,
+    /// Scale to fill the 2:3 frame, center-cropping the overflow.
+    Cover,
+    /// Fit the whole poster inside the 2:3 frame, padding with solid black bars.
+    Pad,
+    /// Fit the whole poster inside the 2:3 frame, filling the bars with a
+    /// blurred, zoomed copy of the poster.
+    Blur,
+}
+
+impl PosterFit {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Native => FIT_NATIVE,
+            Self::Cover => FIT_COVER,
+            Self::Pad => FIT_PAD,
+            Self::Blur => FIT_BLUR,
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, AppError> {
+        match s {
+            FIT_NATIVE => Ok(Self::Native),
+            FIT_COVER => Ok(Self::Cover),
+            FIT_PAD => Ok(Self::Pad),
+            FIT_BLUR => Ok(Self::Blur),
+            _ => Err(AppError::BadRequest(format!(
+                "poster_fit must be '{FIT_NATIVE}', '{FIT_COVER}', '{FIT_PAD}', or '{FIT_BLUR}'"
+            ))),
+        }
+    }
+
+    /// Cache key suffix. `Native` (the default) returns an empty string so that
+    /// poster cache keys written before this feature existed — all rendered
+    /// natively — remain valid and the default behavior reuses them with no
+    /// re-render. Opting into `cover`/`pad`/`blur` emits a token, producing a
+    /// distinct cache entry.
+    pub fn cache_suffix(self) -> &'static str {
+        match self {
+            Self::Native => "",
+            Self::Cover => ".fc",
+            Self::Pad => ".fp",
+            Self::Blur => ".fb",
+        }
+    }
+}
+
+impl_str_enum!(PosterFit);
+
+/// Default poster fit: `Native` (keep the source aspect ratio — legacy
+/// behavior). Normalization to 2:3 (`cover`/`pad`/`blur`) is opt-in.
+pub fn default_poster_fit() -> PosterFit {
+    PosterFit::Native
+}
+
 /// Validate ratings_limit is 0–10 (one slot per available rating source).
 pub fn validate_ratings_limit(limit: i32) -> Result<(), AppError> {
     if (0..=10).contains(&limit) {
@@ -1506,7 +1578,30 @@ mod tests {
         assert_eq!(defaults.poster_badge_size, BadgeSize::Medium);
         assert_eq!(defaults.logo_badge_size, BadgeSize::Medium);
         assert_eq!(defaults.backdrop_badge_size, BadgeSize::Medium);
+        assert_eq!(defaults.poster_fit, PosterFit::Native);
         assert!(defaults.is_default);
+    }
+
+    #[test]
+    fn poster_fit_parse_round_trip_and_tokens() {
+        for f in [PosterFit::Native, PosterFit::Cover, PosterFit::Pad, PosterFit::Blur] {
+            assert_eq!(PosterFit::parse(f.as_str()).unwrap(), f);
+        }
+        assert!(PosterFit::parse("bogus").is_err());
+        assert_eq!(default_poster_fit(), PosterFit::Native);
+        // Native must keep an empty token so pre-feature poster cache keys survive.
+        assert_eq!(PosterFit::Native.cache_suffix(), "");
+        assert_eq!(PosterFit::Cover.cache_suffix(), ".fc");
+        assert_eq!(PosterFit::Pad.cache_suffix(), ".fp");
+        assert_eq!(PosterFit::Blur.cache_suffix(), ".fb");
+    }
+
+    #[test]
+    fn parse_global_render_settings_reads_poster_fit() {
+        let mut globals = HashMap::new();
+        globals.insert("poster_fit".into(), "pad".into());
+        let settings = parse_global_render_settings(&globals);
+        assert_eq!(settings.poster_fit, PosterFit::Pad);
     }
 }
 
@@ -1886,6 +1981,7 @@ pub struct UpsertApiKeySettings<'a> {
     pub backdrop_label_style: &'a str,
     pub poster_badge_direction: &'a str,
     pub poster_badge_split: bool,
+    pub poster_fit: &'a str,
     pub poster_badge_size: &'a str,
     pub logo_badge_size: &'a str,
     pub backdrop_badge_size: &'a str,
@@ -1931,6 +2027,7 @@ pub async fn upsert_api_key_settings(
         backdrop_label_style: Set(params.backdrop_label_style.to_string()),
         poster_badge_direction: Set(params.poster_badge_direction.to_string()),
         poster_badge_split: Set(params.poster_badge_split),
+        poster_fit: Set(params.poster_fit.to_string()),
         poster_badge_size: Set(params.poster_badge_size.to_string()),
         logo_badge_size: Set(params.logo_badge_size.to_string()),
         backdrop_badge_size: Set(params.backdrop_badge_size.to_string()),
@@ -1973,6 +2070,7 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::BackdropLabelStyle,
                     api_key_settings::Column::PosterBadgeDirection,
                     api_key_settings::Column::PosterBadgeSplit,
+                    api_key_settings::Column::PosterFit,
                     api_key_settings::Column::PosterBadgeSize,
                     api_key_settings::Column::LogoBadgeSize,
                     api_key_settings::Column::BackdropBadgeSize,
@@ -2038,6 +2136,8 @@ pub struct RenderSettings {
     /// When true, poster badges are split evenly across two opposite sides
     /// (left/right for a vertical badge layout, top/bottom for horizontal rows).
     pub poster_badge_split: bool,
+    /// How non-2:3 posters are fit to the standard 2:3 output frame.
+    pub poster_fit: PosterFit,
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
@@ -2100,6 +2200,7 @@ impl Default for RenderSettings {
             backdrop_label_style: LabelStyle::Official,
             poster_badge_direction: BadgeDirection::Default,
             poster_badge_split: false,
+            poster_fit: default_poster_fit(),
             poster_badge_size: BadgeSize::Medium,
             logo_badge_size: BadgeSize::Medium,
             backdrop_badge_size: BadgeSize::Medium,
@@ -2171,6 +2272,7 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
             .get("poster_badge_split")
             .map(|v| v == "true")
             .unwrap_or(defaults.poster_badge_split),
+        poster_fit: global_or(globals, "poster_fit", PosterFit::parse, defaults.poster_fit),
         poster_badge_size: global_or(globals, "poster_badge_size", BadgeSize::parse, defaults.poster_badge_size),
         logo_badge_size: global_or(globals, "logo_badge_size", BadgeSize::parse, defaults.logo_badge_size),
         backdrop_badge_size: global_or(globals, "backdrop_badge_size", BadgeSize::parse, defaults.backdrop_badge_size),
@@ -2227,6 +2329,7 @@ pub async fn get_effective_render_settings(
                 backdrop_label_style: parse_setting_or_default(&s.backdrop_label_style, "backdrop_label_style", LabelStyle::parse, LabelStyle::Official),
                 poster_badge_direction: parse_setting_or_default(&s.poster_badge_direction, "poster_badge_direction", BadgeDirection::parse, BadgeDirection::Default),
                 poster_badge_split: s.poster_badge_split,
+                poster_fit: parse_setting_or_default(&s.poster_fit, "poster_fit", PosterFit::parse, default_poster_fit()),
                 poster_badge_size: parse_setting_or_default(&s.poster_badge_size, "poster_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 logo_badge_size: parse_setting_or_default(&s.logo_badge_size, "logo_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 backdrop_badge_size: parse_setting_or_default(&s.backdrop_badge_size, "backdrop_badge_size", BadgeSize::parse, BadgeSize::Medium),

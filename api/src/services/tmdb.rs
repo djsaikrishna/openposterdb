@@ -7,6 +7,13 @@ use zeroize::Zeroizing;
 
 use super::lang::{lang_base, lang_region};
 
+/// Standard movie-poster aspect ratio (width:height = 2:3 ≈ 0.667).
+const POSTER_TARGET_RATIO: f64 = 2.0 / 3.0;
+/// Tolerance around [`POSTER_TARGET_RATIO`] for treating a poster as "standard".
+/// TMDB posters are 0.667 (2:3) or occasionally 0.675; this admits both while
+/// rejecting square (1.0) or otherwise off-ratio art.
+const POSTER_RATIO_TOL: f64 = 0.05;
+
 #[derive(Clone)]
 pub struct TmdbClient {
     api_key: Arc<Zeroizing<String>>,
@@ -92,11 +99,45 @@ impl TmdbClient {
     /// When `lang` is empty (e.g. backdrops): returns the best null-language
     /// image, since backdrops are inherently language-agnostic.
     pub fn select_image<'a>(images: &'a [TmdbImage], lang: &str, textless: bool) -> Option<&'a TmdbImage> {
+        Self::select_image_ranked(images, lang, textless, None)
+    }
+
+    /// Like [`select_image`], but for posters: among the candidates in each
+    /// language tier, prefer art close to the standard 2:3 aspect ratio before
+    /// falling back to highest vote. This keeps non-2:3 source posters (which
+    /// downstream apps crop, cutting off title art — issue #15) from being
+    /// chosen when a 2:3 poster is available. Falls back to vote-only ranking
+    /// when no candidate is near 2:3.
+    pub fn select_poster<'a>(images: &'a [TmdbImage], lang: &str, textless: bool) -> Option<&'a TmdbImage> {
+        Self::select_image_ranked(images, lang, textless, Some(POSTER_TARGET_RATIO))
+    }
+
+    fn select_image_ranked<'a>(
+        images: &'a [TmdbImage],
+        lang: &str,
+        textless: bool,
+        target_ratio: Option<f64>,
+    ) -> Option<&'a TmdbImage> {
+        // Rank candidates by (near-target aspect ratio, then vote_average).
+        // `max_by` picks a standard-ratio image over any off-ratio one, and the
+        // highest vote among equals. With `target_ratio = None` (logos,
+        // backdrops) the ratio key is always false, so ranking is vote-only —
+        // identical to the previous behavior.
+        let rank = |img: &TmdbImage| -> (bool, f64) {
+            let standard = match target_ratio {
+                Some(r) => img.aspect_ratio > 0.0 && (img.aspect_ratio - r).abs() <= POSTER_RATIO_TOL,
+                None => false,
+            };
+            (standard, img.vote_average)
+        };
+        let cmp = |a: &&TmdbImage, b: &&TmdbImage| {
+            rank(a).partial_cmp(&rank(b)).unwrap_or(std::cmp::Ordering::Equal)
+        };
         let find_best = |target: Option<&str>| -> Option<&TmdbImage> {
             images
                 .iter()
                 .filter(|img| img.iso_639_1.as_deref() == target)
-                .max_by(|a, b| a.vote_average.partial_cmp(&b.vote_average).unwrap_or(std::cmp::Ordering::Equal))
+                .max_by(cmp)
         };
 
         if textless {
@@ -115,7 +156,7 @@ impl TmdbClient {
             let regional = images
                 .iter()
                 .filter(|img| img.iso_639_1.as_deref() == Some(base) && img.iso_3166_1.as_deref() == Some(region))
-                .max_by(|a, b| a.vote_average.partial_cmp(&b.vote_average).unwrap_or(std::cmp::Ordering::Equal));
+                .max_by(cmp);
             if let Some(img) = regional {
                 return Some(img);
             }
@@ -151,6 +192,11 @@ pub struct TmdbImage {
     #[serde(default)]
     pub iso_3166_1: Option<String>,
     pub vote_average: f64,
+    /// Source aspect ratio (width/height) as reported by TMDB. Defaults to 0.0
+    /// when absent, which the poster selector treats as "unknown" (never
+    /// preferred as a standard-ratio candidate).
+    #[serde(default)]
+    pub aspect_ratio: f64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -168,11 +214,18 @@ mod tests {
     use super::*;
 
     fn img(path: &str, lang: Option<&str>, vote: f64) -> TmdbImage {
+        // Default to a standard 2:3 ratio; the language-selection tests use
+        // `select_image` (no ratio preference), so this value is irrelevant there.
+        img_ar(path, lang, vote, 2.0 / 3.0)
+    }
+
+    fn img_ar(path: &str, lang: Option<&str>, vote: f64, aspect_ratio: f64) -> TmdbImage {
         TmdbImage {
             file_path: path.to_string(),
             iso_639_1: lang.map(|s| s.to_string()),
             iso_3166_1: None,
             vote_average: vote,
+            aspect_ratio,
         }
     }
 
@@ -182,6 +235,7 @@ mod tests {
             iso_639_1: Some(lang.to_string()),
             iso_3166_1: Some(region.to_string()),
             vote_average: vote,
+            aspect_ratio: 2.0 / 3.0,
         }
     }
 
@@ -339,5 +393,48 @@ mod tests {
         ];
         let selected = TmdbClient::select_image(&images, "en-GB", false).unwrap();
         assert_eq!(selected.file_path, "/en_gb.jpg");
+    }
+
+    #[test]
+    fn select_poster_prefers_standard_ratio_over_higher_vote() {
+        // A square poster with a higher vote should lose to a true 2:3 poster.
+        let images = vec![
+            img_ar("/square.jpg", Some("en"), 9.0, 1.0),
+            img_ar("/poster.jpg", Some("en"), 6.0, 2.0 / 3.0),
+        ];
+        let selected = TmdbClient::select_poster(&images, "en", false).unwrap();
+        assert_eq!(selected.file_path, "/poster.jpg");
+    }
+
+    #[test]
+    fn select_poster_prefers_highest_vote_among_standard_ratio() {
+        let images = vec![
+            img_ar("/p_low.jpg", Some("en"), 5.0, 2.0 / 3.0),
+            img_ar("/p_high.jpg", Some("en"), 8.0, 0.675), // within tolerance of 2:3
+            img_ar("/square.jpg", Some("en"), 9.5, 1.0),
+        ];
+        let selected = TmdbClient::select_poster(&images, "en", false).unwrap();
+        assert_eq!(selected.file_path, "/p_high.jpg");
+    }
+
+    #[test]
+    fn select_poster_falls_back_to_vote_when_no_standard_ratio() {
+        let images = vec![
+            img_ar("/square_low.jpg", Some("en"), 3.0, 1.0),
+            img_ar("/square_high.jpg", Some("en"), 8.0, 1.0),
+        ];
+        let selected = TmdbClient::select_poster(&images, "en", false).unwrap();
+        assert_eq!(selected.file_path, "/square_high.jpg");
+    }
+
+    #[test]
+    fn select_image_ignores_aspect_ratio() {
+        // The generic selector (logos/backdrops) stays vote-only regardless of ratio.
+        let images = vec![
+            img_ar("/wide_high.jpg", Some("en"), 9.0, 1.78),
+            img_ar("/poster_low.jpg", Some("en"), 4.0, 2.0 / 3.0),
+        ];
+        let selected = TmdbClient::select_image(&images, "en", false).unwrap();
+        assert_eq!(selected.file_path, "/wide_high.jpg");
     }
 }

@@ -74,6 +74,7 @@ export const BADGE_SIZE_LABELS: Record<string, string> = { xs: 'Extra Small', s:
 export const BADGE_SHAPE_LABELS: Record<string, string> = { r: 'Rounded', p: 'Pill' }
 export const BADGE_BACKGROUND_LABELS: Record<string, string> = { d: 'Default', k: 'Dark', t: 'Transparent', n: 'None' }
 export const IMAGE_SOURCE_LABELS: Record<string, string> = { t: 'TMDB', f: 'Fanart.tv' }
+export const POSTER_FIT_LABELS: Record<string, string> = { native: 'Native', cover: 'Crop to 2:3', blur: 'Blur fill', pad: 'Letterbox' }
 export const POSITION_LABELS: Record<string, string> = {
   bc: 'Bottom Center', tc: 'Top Center', l: 'Left', r: 'Right',
   tl: 'Top Left', tr: 'Top Right', bl: 'Bottom Left', br: 'Bottom Right',
