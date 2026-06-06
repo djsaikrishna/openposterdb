@@ -12,7 +12,7 @@ use crate::image::serve;
 use crate::services::db;
 use crate::services::db::{
     BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource,
-    RenderSettings,
+    PosterFit, RenderSettings,
 };
 use crate::AppState;
 
@@ -114,6 +114,10 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<bool>)]
     pub split: Option<bool>,
+    /// Poster fit to the 2:3 frame (poster only): `native`, `cover`, `pad`, `blur`.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub fit: Option<PosterFit>,
 }
 
 impl ImageQuery {
@@ -133,6 +137,7 @@ impl ImageQuery {
             || self.textless.is_some()
             || self.blur.is_some()
             || self.split.is_some()
+            || self.fit.is_some()
     }
 }
 
@@ -182,6 +187,7 @@ pub struct FreeKeySettingsResponse {
     pub backdrop_label_style: LabelStyle,
     pub poster_badge_direction: BadgeDirection,
     pub poster_badge_split: bool,
+    pub poster_fit: PosterFit,
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
@@ -224,6 +230,7 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             backdrop_label_style: s.backdrop_label_style,
             poster_badge_direction: s.poster_badge_direction,
             poster_badge_split: s.poster_badge_split,
+            poster_fit: s.poster_fit,
             poster_badge_size: s.poster_badge_size,
             logo_badge_size: s.logo_badge_size,
             backdrop_badge_size: s.backdrop_badge_size,
@@ -432,6 +439,9 @@ fn apply_query_overrides(
         }
         if let Some(split) = query.split {
             s.poster_badge_split = split;
+        }
+        if let Some(fit) = query.fit {
+            s.poster_fit = fit;
         }
     }
     if kind == cache::ImageType::Backdrop {
@@ -865,6 +875,7 @@ mod tests {
             textless: None,
             blur: None,
             split: None,
+            fit: None,
         }
     }
 
@@ -892,6 +903,7 @@ mod tests {
             ratings_order: Some("imdb,tmdb".into()),
             ratings_exclude: Some("rt".into()),
             split: Some(true),
+            fit: Some(PosterFit::Pad),
             ..empty_query()
         };
         let result =
@@ -904,6 +916,7 @@ mod tests {
         assert_eq!(result.poster_badge_direction, BadgeDirection::Horizontal);
         assert_eq!(result.poster_position, BadgePosition::TopLeft);
         assert_eq!(result.image_source, ImageSource::Fanart);
+        assert_eq!(result.poster_fit, PosterFit::Pad);
         assert!(result.textless);
         assert!(result.poster_badge_split);
         assert_eq!(&*result.ratings_order, "imdb,tmdb");

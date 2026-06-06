@@ -136,9 +136,10 @@ GET /{api_key}/isValid
 - `?textless={true|false}`: prefer textless images when available (poster only). Works with both TMDB and Fanart.tv sources
 - `?blur={true|false}`: apply Gaussian blur for spoiler protection (episode only). Badges remain sharp over the blurred still image
 - `?split={true|false}`: split the badges evenly across two opposite sides of the poster (poster only). The axis follows the badge layout — a vertical layout splits left/right, horizontal rows split top/bottom. With an odd number of badges the configured side gets the extra one (e.g. 4 badges → 2 + 2, 3 badges → 2 + 1)
+- `?fit={native|cover|pad|blur}`: how a non-2:3 source poster is fit to the standard 2:3 output frame (poster only). `cover` (default) scales to fill 2:3 and center-crops the overflow; `pad` fits the whole poster inside 2:3 with solid black bars; `blur` fits the whole poster inside 2:3 and fills the bars with a blurred, zoomed copy of the poster; `native` keeps the source aspect ratio (legacy behavior). The non-native modes guarantee a uniform 2:3 image so downstream apps that place posters in fixed 2:3 containers don't crop the art
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`). Old parameter names `?poster_source=` and `?fanart_textless=` are accepted as aliases
 
-`textless` and `split` are poster-only. `blur` is episode-only. `badge_direction` and `position` are silently ignored on logo endpoints. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `badge_shape`, `badge_background`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
+`textless`, `split`, and `fit` are poster-only. `blur` is episode-only. `badge_direction` and `position` are silently ignored on logo endpoints. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `badge_shape`, `badge_background`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
 
 Management endpoints (auth, keys, settings) are under `/api/` and return JSON.
 
@@ -150,9 +151,11 @@ The `?imageSize=` parameter controls the output dimensions. When omitted, `mediu
 
 | Size | Dimensions |
 |---|---|
-| `medium` *(default)* | 580 × 859 |
-| `large` | 1280 × 1896 |
-| `very-large` / `verylarge` | 2000 × 2962 |
+| `medium` *(default)* | 580 × 870 |
+| `large` | 1280 × 1920 |
+| `very-large` / `verylarge` | 2000 × 3000 |
+
+Dimensions are the standard 2:3 poster ratio produced by the default `cover` fit (and the `pad`/`blur` fits). With `?fit=native` the output keeps the source poster's aspect ratio, so the height varies.
 
 **Logo sizes:**
 

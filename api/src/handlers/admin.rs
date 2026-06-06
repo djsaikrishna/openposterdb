@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache;
 use crate::error::AppError;
 use crate::image::serve::{self, LogoBackdropKind};
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource, PosterFit};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -130,6 +130,7 @@ pub struct GlobalSettingsResponse {
     pub backdrop_label_style: LabelStyle,
     pub poster_badge_direction: BadgeDirection,
     pub poster_badge_split: bool,
+    pub poster_fit: PosterFit,
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
@@ -187,6 +188,7 @@ pub async fn get_settings(
         backdrop_label_style: settings.backdrop_label_style,
         poster_badge_direction: settings.poster_badge_direction,
         poster_badge_split: settings.poster_badge_split,
+        poster_fit: settings.poster_fit,
         poster_badge_size: settings.poster_badge_size,
         logo_badge_size: settings.logo_badge_size,
         backdrop_badge_size: settings.backdrop_badge_size,
@@ -247,6 +249,8 @@ pub struct UpdateGlobalSettingsRequest {
     pub poster_badge_direction: BadgeDirection,
     #[serde(default)]
     pub poster_badge_split: bool,
+    #[serde(default = "db::default_poster_fit")]
+    pub poster_fit: PosterFit,
     #[serde(default = "db::default_badge_size")]
     pub poster_badge_size: BadgeSize,
     #[serde(default = "db::default_badge_size")]
@@ -319,6 +323,7 @@ pub async fn update_settings(
         ("backdrop_label_style", req.backdrop_label_style.as_str()),
         ("poster_badge_direction", req.poster_badge_direction.as_str()),
         ("poster_badge_split", poster_badge_split_str),
+        ("poster_fit", req.poster_fit.as_str()),
         ("poster_badge_size", req.poster_badge_size.as_str()),
         ("logo_badge_size", req.logo_badge_size.as_str()),
         ("backdrop_badge_size", req.backdrop_badge_size.as_str()),

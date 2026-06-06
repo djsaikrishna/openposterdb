@@ -177,6 +177,7 @@ pub fn settings_cache_suffix_with_ratings(
         backdrop_label_style: _,
         poster_badge_direction: _,
         poster_badge_split: _,
+        poster_fit: _,
         poster_badge_size: _,
         logo_badge_size: _,
         backdrop_badge_size: _,
@@ -217,10 +218,14 @@ pub fn settings_cache_suffix_with_ratings(
             // Split badges onto opposite sides — only tokenized when enabled, so
             // the default (no split) keeps existing cache keys unchanged.
             let split = if settings.poster_badge_split { ".x1" } else { "" };
+            // Poster aspect-ratio fit. `Native` emits no token, so pre-feature
+            // poster cache keys (all native) stay valid for native requests; the
+            // default (Cover) emits a token, intentionally missing those entries.
+            let fit = settings.poster_fit.cache_suffix();
             // Shape/background sit immediately after badge size (before the
             // optional split token) so the v003 cache-key migration can insert
             // their defaults with a single uniform rule across all image types.
-            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{split}{is_suffix}")
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{split}{fit}{is_suffix}")
         }
         cache::ImageType::Logo => {
             let bs = badge_style_cache_suffix(settings.logo_badge_style.for_shape(settings.logo_badge_shape).as_str());
@@ -1360,6 +1365,7 @@ async fn generate_poster_with_source(
         badge_appearance: settings.poster_appearance(),
         badge_direction: settings.poster_badge_direction,
         poster_badge_split: settings.poster_badge_split,
+        poster_fit: settings.poster_fit,
         render_semaphore: state.render_semaphore.clone(),
         target_width,
         badge_scale,
@@ -1572,7 +1578,7 @@ async fn resolve_tmdb_poster_path(
     textless: bool,
 ) -> Option<String> {
     let tmdb_images = get_tmdb_images_cached(state, resolved, lang).await?;
-    let selected = crate::services::tmdb::TmdbClient::select_image(&tmdb_images.posters, lang, textless)?;
+    let selected = crate::services::tmdb::TmdbClient::select_poster(&tmdb_images.posters, lang, textless)?;
     Some(selected.file_path.clone())
 }
 
@@ -2166,6 +2172,37 @@ mod tests {
         assert_ne!(
             settings_hash(&s1, cache::ImageType::Poster, None),
             settings_hash(&s2, cache::ImageType::Poster, None)
+        );
+    }
+
+    #[test]
+    fn poster_fit_cache_suffix_tokens() {
+        use crate::services::db::PosterFit;
+        let mut s = RenderSettings::default();
+        s.poster_fit = PosterFit::Native;
+        let native = settings_cache_suffix(&s, cache::ImageType::Poster, None);
+        s.poster_fit = PosterFit::Cover;
+        let cover = settings_cache_suffix(&s, cache::ImageType::Poster, None);
+        s.poster_fit = PosterFit::Pad;
+        let pad = settings_cache_suffix(&s, cache::ImageType::Poster, None);
+        // Native emits no token so pre-feature (native) poster cache keys stay valid.
+        assert!(!native.contains(".f"), "native must not emit a fit token: {native}");
+        assert!(cover.contains(".fc"), "cover token missing: {cover}");
+        assert!(pad.contains(".fp"), "pad token missing: {pad}");
+        assert_ne!(native, cover);
+        assert_ne!(cover, pad);
+    }
+
+    #[test]
+    fn settings_hash_differs_by_poster_fit() {
+        use crate::services::db::PosterFit;
+        let mut a = RenderSettings::default();
+        a.poster_fit = PosterFit::Cover;
+        let mut b = RenderSettings::default();
+        b.poster_fit = PosterFit::Blur;
+        assert_ne!(
+            settings_hash(&a, cache::ImageType::Poster, None),
+            settings_hash(&b, cache::ImageType::Poster, None)
         );
     }
 
