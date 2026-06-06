@@ -1055,25 +1055,97 @@ mod tests {
         assert!(mdblist_badges(&resp).is_empty());
     }
 
+    // --- mdblist_lookup_for (issue #14) ---
+
+    fn resolved(imdb: Option<&str>, tmdb_id: u64, media_type: MediaType) -> ResolvedId {
+        ResolvedId {
+            imdb_id: imdb.map(|s| s.to_string()),
+            tmdb_id,
+            tvdb_id: None,
+            media_type,
+            poster_path: None,
+            release_date: None,
+            episode: None,
+        }
+    }
+
+    #[test]
+    fn mdblist_lookup_prefers_imdb_when_present() {
+        let r = resolved(Some("tt2560140"), 1429, MediaType::Tv);
+        assert_eq!(mdblist_lookup_for(&r), Some(MdblistLookup::Imdb("tt2560140")));
+    }
+
+    #[test]
+    fn mdblist_lookup_falls_back_to_tmdb_when_no_imdb() {
+        // The anime case: TMDB knows the title but has no IMDb cross-reference.
+        // Without the fallback, every MDBList-sourced badge (incl. MAL) is lost.
+        let r = resolved(None, 1429, MediaType::Tv);
+        assert_eq!(mdblist_lookup_for(&r), Some(MdblistLookup::Tmdb(1429)));
+    }
+
+    #[test]
+    fn mdblist_lookup_falls_back_to_tmdb_for_movies_too() {
+        let r = resolved(None, 550, MediaType::Movie);
+        assert_eq!(mdblist_lookup_for(&r), Some(MdblistLookup::Tmdb(550)));
+    }
+
+    #[test]
+    fn mdblist_lookup_none_for_episodes() {
+        // MDBList has no episode-level ratings regardless of which ids are present.
+        let with_imdb = resolved(Some("tt2560140"), 1429, MediaType::Episode);
+        let without_imdb = resolved(None, 1429, MediaType::Episode);
+        assert_eq!(mdblist_lookup_for(&with_imdb), None);
+        assert_eq!(mdblist_lookup_for(&without_imdb), None);
+    }
+
+}
+
+/// Which MDBList endpoint to use for a resolved title.
+///
+/// Prefer the IMDb-keyed lookup. When a title resolved without an IMDb id —
+/// common for anime and other titles TMDB knows but hasn't cross-referenced to
+/// IMDb — fall back to the TMDB id (always present), so the title keeps every
+/// MDBList-sourced badge (IMDb, RT, Metacritic, Trakt, Letterboxd, MyAnimeList,
+/// the MDBList score, Roger Ebert) instead of collapsing to the TMDB
+/// vote_average alone. Episodes have no MDBList ratings. (issue #14)
+#[derive(Debug, PartialEq, Eq)]
+enum MdblistLookup<'a> {
+    Imdb(&'a str),
+    Tmdb(u64),
+}
+
+fn mdblist_lookup_for(resolved: &ResolvedId) -> Option<MdblistLookup<'_>> {
+    // mdblist only supports movie/show level ratings, not individual episodes
+    if resolved.media_type == MediaType::Episode {
+        return None;
+    }
+    match resolved.imdb_id.as_deref() {
+        Some(imdb_id) => Some(MdblistLookup::Imdb(imdb_id)),
+        None => Some(MdblistLookup::Tmdb(resolved.tmdb_id)),
+    }
 }
 
 async fn fetch_mdblist_ratings(
     resolved: &ResolvedId,
     mdblist: Option<&MdblistClient>,
 ) -> Option<(Vec<RatingBadge>, Option<u64>, Option<u64>, Option<String>)> {
-    // mdblist only supports movie/show level ratings, not individual episodes
-    if resolved.media_type == MediaType::Episode {
-        return None;
-    }
     let client = mdblist?;
-    let imdb_id = resolved.imdb_id.as_deref()?;
 
-    let resp = match client.get_ratings(imdb_id, &resolved.media_type).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(imdb_id, media_type = ?resolved.media_type, "mdblist rating fetch failed: {e}");
-            return None;
-        }
+    let resp = match mdblist_lookup_for(resolved)? {
+        MdblistLookup::Imdb(imdb_id) => match client.get_ratings(imdb_id, &resolved.media_type).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(imdb_id, media_type = ?resolved.media_type, "mdblist rating fetch failed: {e}");
+                return None;
+            }
+        },
+        MdblistLookup::Tmdb(tmdb_id) => match client.get_ratings_by_tmdb(tmdb_id, &resolved.media_type).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(tmdb_id, media_type = ?resolved.media_type, "mdblist tmdb rating fetch failed: {e}");
+                return None;
+            }
+        },
     };
 
     Some((mdblist_badges(&resp), resp.ids.tmdb, resp.ids.tvdb, resp.ids.imdb))
