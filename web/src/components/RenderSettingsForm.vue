@@ -61,6 +61,7 @@ export interface RenderSettings {
   episode_badge_background: string
   quality_style: string
   lang_icon: string
+  lang_exclude: string
   quality_position: string
   lang_position: string
 }
@@ -123,6 +124,7 @@ const editEpisodeBadgeBackground = ref(props.settings.episode_badge_background |
 const editQualityStyle = ref(props.settings.quality_style || 'text')
 const editQualityDirection = ref(props.settings.quality_direction || 'd')
 const editLangIcon = ref(props.settings.lang_icon || 'off')
+const editLangExclude = ref(props.settings.lang_exclude || '')
 const editQualityPosition = ref(props.settings.quality_position || 'tr')
 const editLangPosition = ref(props.settings.lang_position || 'tl')
 
@@ -182,6 +184,7 @@ function applySettings(s: RenderSettings) {
   editQualityStyle.value = s.quality_style || 'text'
   editQualityDirection.value = s.quality_direction || 'd'
   editLangIcon.value = s.lang_icon || 'off'
+  editLangExclude.value = s.lang_exclude || ''
   editQualityPosition.value = s.quality_position || 'tr'
   editLangPosition.value = s.lang_position || 'tl'
 }
@@ -263,6 +266,7 @@ async function autoSave() {
       quality_style: editQualityStyle.value,
       quality_direction: editQualityDirection.value,
       lang_icon: editLangIcon.value,
+      lang_exclude: editLangExclude.value.trim(),
       quality_position: editQualityPosition.value,
       lang_position: editLangPosition.value,
     })
@@ -291,7 +295,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground, editQualityStyle, editQualityDirection, editLangIcon, editQualityPosition, editLangPosition],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground, editQualityStyle, editQualityDirection, editLangIcon, editLangExclude, editQualityPosition, editLangPosition],
   () => {
     if (syncing) return
     autoSave()
@@ -576,6 +580,18 @@ function toggleExclude(key: string, checked: boolean) {
             <SelectItem value="text">Text</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+      <div class="space-y-2">
+        <Label :for="inputId('lang-exclude')">Exclude languages</Label>
+        <Input
+          :id="inputId('lang-exclude')"
+          v-model.trim="editLangExclude"
+          type="text"
+          placeholder="e.g. en,es"
+          class="max-w-xs"
+          data-testid="lang-exclude-input"
+        />
+        <p class="text-xs text-muted-foreground">Hide the main-language badge for these languages (comma-separated ISO 639-1 codes).</p>
       </div>
       <div class="space-y-2">
         <Label :for="inputId('quality-position')">Quality badge position</Label>

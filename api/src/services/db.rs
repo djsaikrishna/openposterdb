@@ -1036,6 +1036,75 @@ pub fn validate_lang_code(code: &str) -> Result<(), AppError> {
     validate_lang(code)
 }
 
+/// Default language-exclude list: empty (show the language badge for every
+/// language).
+pub fn default_lang_exclude() -> String {
+    String::new()
+}
+
+/// Validate a comma-separated list of languages to exclude from the language
+/// badge. Each non-empty entry must be a valid language code; empty is allowed.
+pub fn validate_lang_exclude(s: &str) -> Result<(), AppError> {
+    if s.is_empty() {
+        return Ok(());
+    }
+    for code in s.split(',') {
+        let code = code.trim();
+        if code.is_empty() {
+            continue;
+        }
+        validate_lang(code)?;
+    }
+    Ok(())
+}
+
+/// "No language" sentinels (ISO/TMDB) for undetermined/none/multiple content.
+const NO_LANGUAGE_CODES: &[&str] = &["xx", "und", "zxx", "mul"];
+
+/// Canonicalize a language code to a comparable ISO 639-1 base: strip
+/// region/script, lowercase, and map known TMDB aliases (e.g. `cn` → `zh`).
+/// Returns `None` for empty input or a "no language" sentinel (`xx`, `und`,
+/// `zxx`, `mul`). Centralizing this keeps the flag lookup, the exclude list, and
+/// the cache key all keyed off the same language identity — so e.g. excluding
+/// `zh` also hides TMDB's `cn`-tagged titles, and a `cn` title gets the same flag
+/// as a `zh` one.
+pub fn canonical_lang(code: &str) -> Option<String> {
+    let base = code.split(['-', '_']).next().unwrap_or(code).trim().to_ascii_lowercase();
+    if base.is_empty() || NO_LANGUAGE_CODES.contains(&base.as_str()) {
+        return None;
+    }
+    let mapped = match base.as_str() {
+        // TMDB tags some Chinese/Cantonese titles `cn` rather than ISO `zh`.
+        "cn" => "zh",
+        other => other,
+    };
+    Some(mapped.to_string())
+}
+
+/// Returns `true` if `code`'s canonical language is in the comma-separated
+/// `exclude` list (both sides canonicalized). Used to suppress the language
+/// badge for languages the user already understands (e.g. exclude `en` to hide
+/// it on English titles).
+pub fn lang_is_excluded(exclude: &str, code: &str) -> bool {
+    if exclude.is_empty() {
+        return false;
+    }
+    let target = match canonical_lang(code) {
+        Some(t) => t,
+        None => return false,
+    };
+    exclude.split(',').filter_map(|e| canonical_lang(e)).any(|e| e == target)
+}
+
+/// Compact, stable cache token for the language-exclude list: canonical codes,
+/// de-duplicated, sorted, joined by `_`. Empty for an empty list.
+fn lang_exclude_cache_token(exclude: &str) -> String {
+    let mut codes: Vec<String> = exclude.split(',').filter_map(|e| canonical_lang(e)).collect();
+    codes.sort();
+    codes.dedup();
+    codes.join("_")
+}
+
 /// Cache-key token for the quality (#1) and language (#6) overlay badges. Empty
 /// when neither is active, so default configs keep their existing cache keys (no
 /// migration). The derived title language (no override) is intentionally omitted
@@ -1061,6 +1130,13 @@ pub fn overlay_cache_suffix(settings: &RenderSettings) -> String {
             out.push_str(code);
         }
         out.push_str(&format!(".lp{}", settings.lang_position.as_str()));
+        // Excluded languages change which titles get a badge, so they must be in
+        // the key. (The per-title language itself is a function of the title id,
+        // already in the key.)
+        let lx = lang_exclude_cache_token(&settings.lang_exclude);
+        if !lx.is_empty() {
+            out.push_str(&format!(".lx{lx}"));
+        }
     }
     out
 }
@@ -1393,6 +1469,63 @@ mod tests {
         s3.lang_icon = LangIcon::Text;
         assert!(overlay_cache_suffix(&s3).contains(".qt4"));
         assert!(overlay_cache_suffix(&s3).contains(".lit"));
+    }
+
+    #[test]
+    fn canonical_lang_normalizes() {
+        assert_eq!(canonical_lang("en").as_deref(), Some("en"));
+        assert_eq!(canonical_lang("EN").as_deref(), Some("en"));
+        assert_eq!(canonical_lang("pt-BR").as_deref(), Some("pt"));
+        assert_eq!(canonical_lang("zh_Hans").as_deref(), Some("zh"));
+        // TMDB alias.
+        assert_eq!(canonical_lang("cn").as_deref(), Some("zh"));
+        // "No language" sentinels and empty → None.
+        for c in ["", "xx", "und", "zxx", "mul"] {
+            assert_eq!(canonical_lang(c), None, "{c} should be no-language");
+        }
+    }
+
+    #[test]
+    fn lang_is_excluded_matches_base_code() {
+        assert!(lang_is_excluded("en", "en"));
+        assert!(lang_is_excluded("en,es", "es"));
+        // Region/script stripped + case-insensitive on both sides.
+        assert!(lang_is_excluded("en", "en-US"));
+        assert!(lang_is_excluded("PT", "pt-BR"));
+        assert!(lang_is_excluded(" en , fr ", "fr"));
+        // TMDB alias: excluding `zh` also hides `cn`-tagged titles (and vice versa).
+        assert!(lang_is_excluded("zh", "cn"));
+        assert!(lang_is_excluded("cn", "zh"));
+        // Not excluded.
+        assert!(!lang_is_excluded("en", "ja"));
+        assert!(!lang_is_excluded("", "en"));
+        assert!(!lang_is_excluded("en", ""));
+        // A "no language" code can't be excluded meaningfully.
+        assert!(!lang_is_excluded("xx", "xx"));
+    }
+
+    #[test]
+    fn validate_lang_exclude_rules() {
+        assert!(validate_lang_exclude("").is_ok());
+        assert!(validate_lang_exclude("en").is_ok());
+        assert!(validate_lang_exclude("en,pt-BR,ja").is_ok());
+        assert!(validate_lang_exclude("english").is_err()); // > 5 chars
+        assert!(validate_lang_exclude("e").is_err()); // < 2 chars
+    }
+
+    #[test]
+    fn overlay_cache_suffix_encodes_lang_exclude() {
+        let mut s = RenderSettings::default();
+        s.lang_icon = LangIcon::Flag;
+        // No exclude → no .lx token.
+        assert!(!overlay_cache_suffix(&s).contains(".lx"));
+        // Exclude is normalized (base, lowercased, sorted, deduped, '_'-joined).
+        s.lang_exclude = Arc::from("PT-BR, en, en");
+        assert!(overlay_cache_suffix(&s).contains(".lxen_pt"));
+        // Exclude only matters when the language badge is on.
+        let mut off = RenderSettings::default();
+        off.lang_exclude = Arc::from("en");
+        assert!(!overlay_cache_suffix(&off).contains(".lx"));
     }
 
     #[test]
@@ -2359,6 +2492,7 @@ pub struct UpsertApiKeySettings<'a> {
     pub backdrop_edge_inset_y: i32,
     pub quality_style: &'a str,
     pub lang_icon: &'a str,
+    pub lang_exclude: &'a str,
     pub quality_position: &'a str,
     pub quality_direction: &'a str,
     pub lang_position: &'a str,
@@ -2412,6 +2546,7 @@ pub async fn upsert_api_key_settings(
         backdrop_edge_inset_y: Set(params.backdrop_edge_inset_y),
         quality_style: Set(params.quality_style.to_string()),
         lang_icon: Set(params.lang_icon.to_string()),
+        lang_exclude: Set(params.lang_exclude.to_string()),
         quality_position: Set(params.quality_position.to_string()),
         quality_direction: Set(params.quality_direction.to_string()),
         lang_position: Set(params.lang_position.to_string()),
@@ -2462,6 +2597,7 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::BackdropEdgeInsetY,
                     api_key_settings::Column::QualityStyle,
                     api_key_settings::Column::LangIcon,
+                    api_key_settings::Column::LangExclude,
                     api_key_settings::Column::QualityPosition,
                     api_key_settings::Column::QualityDirection,
                     api_key_settings::Column::LangPosition,
@@ -2545,6 +2681,9 @@ pub struct RenderSettings {
     pub quality_style: QualityStyle,
     /// Whether/how the main-language badge renders (off/flag/text). Persisted.
     pub lang_icon: LangIcon,
+    /// Comma-separated languages to *exclude* from the language badge (e.g.
+    /// `"en"` to hide it on English titles). Empty = show for all. Persisted.
+    pub lang_exclude: Arc<str>,
     /// Explicit language-code override for the language badge. Transient: set
     /// only from the `?lang_code=` query param. When `None`, the title's
     /// resolved `original_language` is used.
@@ -2629,6 +2768,7 @@ impl Default for RenderSettings {
             quality: Arc::from(""),
             quality_style: default_quality_style(),
             lang_icon: default_lang_icon(),
+            lang_exclude: Arc::from(""),
             lang_code: None,
             quality_position: default_quality_position(),
             quality_direction: default_quality_direction(),
@@ -2726,6 +2866,7 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         quality: Arc::from(""),
         quality_style: global_or(globals, "quality_style", QualityStyle::parse, defaults.quality_style),
         lang_icon: global_or(globals, "lang_icon", LangIcon::parse, defaults.lang_icon),
+        lang_exclude: arc_or("lang_exclude", defaults.lang_exclude),
         lang_code: None,
         quality_position: global_or(globals, "quality_position", BadgePosition::parse, defaults.quality_position),
         quality_direction: global_or(globals, "quality_direction", BadgeDirection::parse, defaults.quality_direction),
@@ -2786,6 +2927,7 @@ pub async fn get_effective_render_settings(
                 quality: Arc::from(""),
                 quality_style: parse_setting_or_default(&s.quality_style, "quality_style", QualityStyle::parse, default_quality_style()),
                 lang_icon: parse_setting_or_default(&s.lang_icon, "lang_icon", LangIcon::parse, default_lang_icon()),
+                lang_exclude: Arc::from(s.lang_exclude.as_str()),
                 lang_code: None,
                 quality_position: parse_setting_or_default(&s.quality_position, "quality_position", BadgePosition::parse, default_quality_position()),
                 quality_direction: parse_setting_or_default(&s.quality_direction, "quality_direction", BadgeDirection::parse, default_quality_direction()),

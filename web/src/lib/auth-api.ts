@@ -49,6 +49,7 @@ export interface FreeKeyDefaults {
   quality_style: string
   quality_direction: string
   lang_icon: string
+  lang_exclude: string
   quality_position: string
   lang_position: string
 }

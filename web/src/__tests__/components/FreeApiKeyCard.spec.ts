@@ -50,6 +50,7 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     quality_style: 'text',
     quality_direction: 'd',
     lang_icon: 'off',
+    lang_exclude: '',
     quality_position: 'tr',
     lang_position: 'tl',
     ...overrides,
@@ -651,6 +652,22 @@ describe('FreeApiKeyCard', () => {
     // Enable an icon → lang_code is now sent.
     await setSelectById(wrapper, 'free-lang-icon', 'text')
     expect(findCurlCode(wrapper).text()).toContain('lang_code=ja')
+  })
+
+  it('renders the lang-exclude input', () => {
+    const wrapper = mountCard(true)
+    expect(wrapper.find('input[aria-label*="exclude ISO 639-1"]').exists()).toBe(true)
+  })
+
+  it('adds lang_exclude only when non-empty and a language icon is enabled', async () => {
+    const wrapper = mountCard(true)
+    // lang_exclude with no icon active → omitted.
+    await wrapper.find('input[aria-label*="exclude ISO 639-1"]').setValue('en,es')
+    expect(findCurlCode(wrapper).text()).not.toContain('lang_exclude=')
+
+    // Enable an icon → lang_exclude is now sent.
+    await setSelectById(wrapper, 'free-lang-icon', 'flag')
+    expect(findCurlCode(wrapper).text()).toContain('lang_exclude=en%2Ces')
   })
 
   it('quality and language badges persist across image-type switches (global controls)', async () => {

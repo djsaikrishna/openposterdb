@@ -52,6 +52,7 @@ const defaultSettings: RenderSettings = {
   quality_style: 'text',
   quality_direction: 'd',
   lang_icon: 'off',
+  lang_exclude: '',
   quality_position: 'tr',
   lang_position: 'tl',
 }
@@ -260,6 +261,37 @@ describe('RenderSettingsForm', () => {
     const wrapper = mountForm()
     expect(wrapper.find('[data-testid="quality-position-select"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="lang-position-select"]').exists()).toBe(true)
+  })
+
+  it('renders the lang-exclude text input', () => {
+    const wrapper = mountForm()
+    expect(wrapper.find('[data-testid="lang-exclude-input"]').exists()).toBe(true)
+  })
+
+  it('includes lang_exclude in the auto-save payload', async () => {
+    const saveSettings = vi.fn().mockResolvedValue(null)
+    const settings = { ...defaultSettings, lang_exclude: 'en' }
+    const wrapper = mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings,
+        fetchPreview: makeFetchPreview(),
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+
+    // Trigger an auto-save via an unrelated control; the payload carries the
+    // current lang_exclude value from the loaded settings.
+    await wrapper.find('[data-testid="textless-checkbox"]').setValue(true)
+    await flushPromises()
+
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ lang_exclude: 'en' }),
+    )
   })
 
   it('renders the quality-direction dropdown', () => {

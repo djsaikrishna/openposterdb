@@ -89,6 +89,7 @@ async function toggleFreeApiKey() {
     quality_style: s.quality_style,
     quality_direction: s.quality_direction,
     lang_icon: s.lang_icon,
+    lang_exclude: s.lang_exclude,
     quality_position: s.quality_position,
     lang_position: s.lang_position,
     free_api_key_enabled: newVal,

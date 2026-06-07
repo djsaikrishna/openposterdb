@@ -53,6 +53,8 @@ pub struct Model {
     pub quality_style: String,
     /// Whether/how the main-language overlay badge renders: `off`, `flag`, `text`.
     pub lang_icon: String,
+    /// Comma-separated languages to exclude from the language badge (e.g. `en`).
+    pub lang_exclude: String,
     /// Anchor position for the quality overlay badge (e.g. `tr`).
     pub quality_position: String,
     /// Layout direction for stacked quality badges (`d` auto, `h`, `v`).

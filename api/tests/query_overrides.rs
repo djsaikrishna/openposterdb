@@ -515,3 +515,21 @@ async fn invalid_quality_direction_rejected() {
     let api_key = create_api_key(&app).await;
     assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?quality_direction=diagonal")).await;
 }
+
+#[tokio::test]
+async fn lang_exclude_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+    assert_not_bad_request(
+        &app,
+        format!("/{api_key}/imdb/poster-default/tt0000001.jpg?lang_icon=flag&lang_exclude=en,es"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn invalid_lang_exclude_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+    assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?lang_exclude=english")).await;
+}

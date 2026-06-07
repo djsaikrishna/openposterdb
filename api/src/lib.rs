@@ -414,4 +414,8 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN quality_direction TEXT NOT NULL DEFAULT 'd'",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN lang_exclude TEXT NOT NULL DEFAULT ''",
+        "duplicate column",
+    ),
 ];

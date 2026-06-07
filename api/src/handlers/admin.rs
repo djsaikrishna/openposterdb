@@ -155,6 +155,7 @@ pub struct GlobalSettingsResponse {
     pub episode_badge_background: BadgeBackground,
     pub quality_style: QualityStyle,
     pub lang_icon: LangIcon,
+    pub lang_exclude: String,
     pub quality_position: BadgePosition,
     pub lang_position: BadgePosition,
     pub quality_direction: BadgeDirection,
@@ -220,6 +221,7 @@ pub async fn get_settings(
         episode_badge_background: settings.episode_badge_background,
         quality_style: settings.quality_style,
         lang_icon: settings.lang_icon,
+        lang_exclude: settings.lang_exclude.to_string(),
         quality_position: settings.quality_position,
         lang_position: settings.lang_position,
         quality_direction: settings.quality_direction,
@@ -313,6 +315,8 @@ pub struct UpdateGlobalSettingsRequest {
     pub quality_style: QualityStyle,
     #[serde(default = "db::default_lang_icon")]
     pub lang_icon: LangIcon,
+    #[serde(default = "db::default_lang_exclude")]
+    pub lang_exclude: String,
     #[serde(default = "db::default_quality_position")]
     pub quality_position: BadgePosition,
     #[serde(default = "db::default_lang_position")]
@@ -326,6 +330,7 @@ pub async fn update_settings(
     Json(req): Json<UpdateGlobalSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, &req.ratings_exclude, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
+    db::validate_lang_exclude(&req.lang_exclude)?;
     let textless_str = if req.textless { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
     let logo_limit_str = req.logo_ratings_limit.to_string();
@@ -378,6 +383,7 @@ pub async fn update_settings(
         ("episode_badge_background", req.episode_badge_background.as_str()),
         ("quality_style", req.quality_style.as_str()),
         ("lang_icon", req.lang_icon.as_str()),
+        ("lang_exclude", req.lang_exclude.as_str()),
         ("quality_position", req.quality_position.as_str()),
         ("lang_position", req.lang_position.as_str()),
         ("quality_direction", req.quality_direction.as_str()),

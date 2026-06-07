@@ -88,6 +88,7 @@ const qualityStyle = ref('default')
 const qualityDirection = ref('default')
 const langIcon = ref('default')
 const langCode = ref('')
+const langExclude = ref('')
 // Anchor positions for the quality / main-language overlay badges. Like
 // `quality_style`/`lang_icon` these are persisted globals, so they use the
 // 'default' sentinel and fall back to the server's persisted defaults.
@@ -314,6 +315,8 @@ const queryString = computed(() => {
   if (langIcon.value !== 'default' && langIcon.value !== 'off') params.set('lang_icon', langIcon.value)
   const langCodeVal = langCode.value.trim()
   if (langCodeVal && langIconActive) params.set('lang_code', langCodeVal)
+  const langExcludeVal = langExclude.value.trim()
+  if (langExcludeVal && langIconActive) params.set('lang_exclude', langExcludeVal)
   // Anchor positions are meaningful only when the matching overlay actually
   // renders, and are emitted only when the user overrides the server default —
   // mirroring the gating for `quality_style`/`lang_code` above.
@@ -560,6 +563,14 @@ async function handleFetch() {
             type="text"
             placeholder="Language code (e.g. ja)"
             aria-label="Main-language ISO 639-1 override"
+            class="bg-background min-w-0"
+          />
+          <Input
+            id="free-lang-exclude"
+            v-model="langExclude"
+            type="text"
+            placeholder="Hide language badge for (e.g. en,es)"
+            aria-label="Main-language exclude ISO 639-1 codes"
             class="bg-background min-w-0"
           />
           <template v-if="imageType === 'poster'">

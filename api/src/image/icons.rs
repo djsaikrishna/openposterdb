@@ -174,12 +174,9 @@ static FLAGS: LazyLock<HashMap<&'static str, RgbaImage>> =
 /// `en`→UK, `pt`→Portugal). Returns `None` for unmapped languages, in which
 /// case the caller falls back to a text badge.
 pub fn flag_country_for_lang(code: &str) -> Option<&'static str> {
-    // Normalize "pt-BR" / "zh_Hans" → "pt" / "zh".
-    let base: String = code
-        .split(['-', '_'])
-        .next()
-        .unwrap_or(code)
-        .to_ascii_lowercase();
+    // Canonicalize ("pt-BR"→"pt", TMDB alias "cn"→"zh", drop "no language"
+    // sentinels) so the flag lookup matches the exclude/cache identity.
+    let base = crate::services::db::canonical_lang(code)?;
     let cc = match base.as_str() {
         "en" => "gb",
         "ja" => "jp",
@@ -347,8 +344,13 @@ mod tests {
         assert!(flag_for_lang("ja").is_some());
         // Region suffixes are stripped before mapping.
         assert!(std::ptr::eq(flag_for_lang("pt-BR").unwrap(), flag_for_lang("pt").unwrap()));
-        // Unmapped language → None (caller falls back to text).
+        // TMDB alias `cn` canonicalizes to `zh` → the China flag.
+        assert_eq!(flag_country_for_lang("cn"), Some("cn"));
+        assert!(std::ptr::eq(flag_for_lang("cn").unwrap(), flag_for_lang("zh").unwrap()));
+        // "No language" sentinel → None (caller falls back to text/omits).
         assert!(flag_country_for_lang("xx").is_none());
         assert!(flag_for_lang("xx").is_none());
+        // Unmapped language → None (caller falls back to text).
+        assert!(flag_country_for_lang("zz").is_none());
     }
 }

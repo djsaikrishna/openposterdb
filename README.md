@@ -143,11 +143,12 @@ GET /{api_key}/isValid
 - `?quality_direction={d|h|v}`: layout direction when multiple quality tiers are shown — `d` (default: auto — resolved from the quality anchor: a column at corner/side positions, a row at top/bottom-center), `h` (horizontal row), `v` (vertical column)
 - `?lang_icon={off|flag|text}`: overlay a badge for the title's main language — `off` (default), `flag` (a country flag), or `text` (the uppercase ISO code, e.g. `EN`). The language is taken from TMDB's `original_language`; languages without a mapped flag fall back to text. Applies to all image types
 - `?lang_code={code}`: override the language used by `lang_icon` (ISO 639-1, e.g. `?lang_code=ja`). When omitted, the title's detected `original_language` is used. (This is independent of `?lang=`, which selects the image *artwork* language.)
+- `?lang_exclude={codes}`: comma-separated languages to *hide* the language badge for, matched against the title's main language (e.g. `?lang_exclude=en` shows the badge on every title except English ones — handy to flag only foreign-language titles). Region variants are matched by base language (`pt` excludes `pt-BR`)
 - `?quality_position={bc|tc|l|r|tl|tr|bl|br}`: anchor for the quality badge, independent of the rating badges and the language badge (default `tr`). Ignored on logos
 - `?lang_position={bc|tc|l|r|tl|tr|bl|br}`: anchor for the main-language badge, independent of the rating badges and the quality badge (default `tl`). Ignored on logos
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`). Old parameter names `?poster_source=` and `?fanart_textless=` are accepted as aliases
 
-`textless`, `split`, and `fit` are poster-only. `blur` is episode-only. `edge_inset_x`/`edge_inset_y` are backdrop-only. `badge_direction` and `position` are silently ignored on logo endpoints. `quality`, `quality_style`, `lang_icon`, and `lang_code` apply to all image types; `quality_position`/`lang_position`/`quality_direction` apply to poster/backdrop/episode (logos always stack their badges below the logo, so positions are ignored there). For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `badge_shape`, `badge_background`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
+`textless`, `split`, and `fit` are poster-only. `blur` is episode-only. `edge_inset_x`/`edge_inset_y` are backdrop-only. `badge_direction` and `position` are silently ignored on logo endpoints. `quality`, `quality_style`, `lang_icon`, `lang_code`, and `lang_exclude` apply to all image types; `quality_position`/`lang_position`/`quality_direction` apply to poster/backdrop/episode (logos always stack their badges below the logo, so positions are ignored there). For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `badge_shape`, `badge_background`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
 
 Management endpoints (auth, keys, settings) are under `/api/` and return JSON.
 
@@ -340,7 +341,7 @@ Cache keys uniquely identify a rendered image. They are used as keys in the in-m
 | Badge shape | `.sh{shape}` | `.shr`, `.shp` | `r` = rounded (default), `p` = pill |
 | Badge background | `.bg{bg}` | `.bgd`, `.bgn` | `d` = default, `k` = dark, `t` = transparent, `n` = none |
 | Quality | `.q{style}{tiers}.qp{pos}` (`.qd{dir}`) | `.qt4.qptr`, `.ql4v.qptl.qdv` | Quality overlay badge. `style`: `t` = text, `l` = logo. `tiers`: one char per tier (`4`=4k, `1`=1080p, `7`=720p, `h`=hdr, `v`=dv). `.qp{pos}` is its anchor; `.qd{dir}` is its layout direction, present only when overridden from auto. Omitted when no `?quality=` is set |
-| Language | `.li{icon}` (`-{code}`)`.lp{pos}` | `.lif.lptl`, `.lit-ja.lptl` | Language overlay badge: `.lif` = flag, `.lit` = text. The `-{code}` suffix appears only when `?lang_code=` overrides the detected language. `.lp{pos}` is its anchor position. Omitted when `lang_icon=off` (default) |
+| Language | `.li{icon}` (`-{code}`)`.lp{pos}` (`.lx{codes}`) | `.lif.lptl`, `.lit-ja.lptl.lxen` | Language overlay badge: `.lif` = flag, `.lit` = text. The `-{code}` suffix appears only when `?lang_code=` overrides the detected language. `.lp{pos}` is its anchor; `.lx{codes}` lists excluded languages (base codes, `_`-joined), present only when `?lang_exclude=` is set. Omitted when `lang_icon=off` (default) |
 | Image size | `.z{size}` | `.zm`, `.zl` | `s` = small, `m` = medium (default), `l` = large, `vl` = very-large |
 
 ### Image Kind Prefixes
@@ -398,6 +399,7 @@ Settings are stored as short single-character or two-character codes:
 | `quality_style` | `text`, `logo` | Quality badge as a text chip (default) or a brand logo |
 | `quality_direction` | `d`, `h`, `v` | Quality badge layout: auto (default — column at corners/sides, row at top/bottom-center), horizontal, vertical |
 | `lang_icon` | `off`, `flag`, `text` | Main-language badge off (default), a country flag, or the ISO code |
+| `lang_exclude` | comma-separated codes | Languages to hide the language badge for (e.g. `en`); empty (default) = show for all |
 | `quality_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Quality badge anchor (default `tr`); independent of ratings/language |
 | `lang_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Language badge anchor (default `tl`); independent of ratings/quality |
 

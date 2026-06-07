@@ -148,6 +148,12 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub lang_code: Option<String>,
+    /// Comma-separated languages to hide the language badge for (e.g. `en` to
+    /// show it on every title except English ones). Matches the title's main
+    /// language.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub lang_exclude: Option<String>,
     /// Anchor position for the quality badge, independent of the ratings and the
     /// language badge: `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` (default `tr`).
     /// Ignored on logos.
@@ -194,6 +200,7 @@ impl ImageQuery {
             || self.quality_position.is_some()
             || self.lang_position.is_some()
             || self.quality_direction.is_some()
+            || self.lang_exclude.is_some()
     }
 }
 
@@ -271,6 +278,7 @@ pub struct FreeKeySettingsResponse {
     pub quality_position: BadgePosition,
     pub lang_position: BadgePosition,
     pub quality_direction: BadgeDirection,
+    pub lang_exclude: String,
 }
 
 impl From<&RenderSettings> for FreeKeySettingsResponse {
@@ -321,6 +329,7 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             quality_position: s.quality_position,
             lang_position: s.lang_position,
             quality_direction: s.quality_direction,
+            lang_exclude: s.lang_exclude.to_string(),
         }
     }
 }
@@ -574,6 +583,10 @@ fn apply_query_overrides(
     }
     if let Some(dir) = query.quality_direction {
         s.quality_direction = dir;
+    }
+    if let Some(ref exclude) = query.lang_exclude {
+        db::validate_lang_exclude(exclude).map_err(|e| e.into_response())?;
+        s.lang_exclude = Arc::from(exclude.as_str());
     }
 
     Ok(Arc::new(s))
@@ -986,6 +999,7 @@ mod tests {
             quality_position: None,
             lang_position: None,
             quality_direction: None,
+            lang_exclude: None,
         }
     }
 

@@ -137,6 +137,7 @@ pub struct RenderSettingsResponse {
     pub episode_badge_background: BadgeBackground,
     pub quality_style: QualityStyle,
     pub lang_icon: LangIcon,
+    pub lang_exclude: String,
     pub quality_position: BadgePosition,
     pub lang_position: BadgePosition,
     pub quality_direction: BadgeDirection,
@@ -199,6 +200,7 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         episode_badge_background: settings.episode_badge_background,
         quality_style: settings.quality_style,
         lang_icon: settings.lang_icon,
+        lang_exclude: settings.lang_exclude.to_string(),
         quality_position: settings.quality_position,
         lang_position: settings.lang_position,
         quality_direction: settings.quality_direction,
@@ -291,6 +293,8 @@ pub struct UpdateSettingsRequest {
     pub quality_style: QualityStyle,
     #[serde(default = "db::default_lang_icon")]
     pub lang_icon: LangIcon,
+    #[serde(default = "db::default_lang_exclude")]
+    pub lang_exclude: String,
     #[serde(default = "db::default_quality_position")]
     pub quality_position: BadgePosition,
     #[serde(default = "db::default_lang_position")]
@@ -344,6 +348,7 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         backdrop_edge_inset_y: db::clamp_edge_inset(req.backdrop_edge_inset_y),
         quality_style: req.quality_style.as_str(),
         lang_icon: req.lang_icon.as_str(),
+        lang_exclude: &req.lang_exclude,
         quality_position: req.quality_position.as_str(),
         quality_direction: req.quality_direction.as_str(),
         lang_position: req.lang_position.as_str(),
@@ -359,6 +364,7 @@ pub async fn update_settings(
         .await?
         .ok_or_else(|| AppError::IdNotFound(format!("API key {id} not found")))?;
     db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, &req.ratings_exclude, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
+    db::validate_lang_exclude(&req.lang_exclude)?;
     db::upsert_api_key_settings(&state.db, build_upsert(id, &req)).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))
@@ -407,6 +413,7 @@ pub async fn update_own_settings(
 ) -> Result<Json<Value>, AppError> {
     let id = api_key_user.key_id;
     db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, &req.ratings_exclude, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
+    db::validate_lang_exclude(&req.lang_exclude)?;
     db::upsert_api_key_settings(&state.db, build_upsert(id, &req)).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))
