@@ -50,8 +50,10 @@ export interface FreeKeyDefaults {
   quality_direction: string
   lang_icon: string
   lang_exclude: string
-  quality_position: string
-  lang_position: string
+  poster_quality_position: string
+  backdrop_quality_position: string
+  poster_lang_position: string
+  backdrop_lang_position: string
 }
 
 export const authApi = {

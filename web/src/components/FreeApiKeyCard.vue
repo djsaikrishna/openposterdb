@@ -89,11 +89,26 @@ const qualityDirection = ref('default')
 const langIcon = ref('default')
 const langCode = ref('')
 const langExclude = ref('')
-// Anchor positions for the quality / main-language overlay badges. Like
-// `quality_style`/`lang_icon` these are persisted globals, so they use the
-// 'default' sentinel and fall back to the server's persisted defaults.
-const qualityPosition = ref('default')
-const langPosition = ref('default')
+// Anchor positions for the quality / main-language overlay badges. These are
+// per-image-type (poster vs backdrop) on the server, so we keep a value per type
+// and show/emit only the one for the currently-selected image type — mirroring
+// the rating `position` control. Logo/episode ignore overlay positions, so the
+// controls are hidden for them. Each uses the 'default' sentinel and falls back
+// to that type's persisted server default.
+const qualityPositionByType = ref<Record<'poster' | 'backdrop', string>>({ poster: 'default', backdrop: 'default' })
+const langPositionByType = ref<Record<'poster' | 'backdrop', string>>({ poster: 'default', backdrop: 'default' })
+// True for the image types that actually render overlay positions.
+const overlayPositionType = computed<'poster' | 'backdrop' | null>(() =>
+  imageType.value === 'poster' || imageType.value === 'backdrop' ? imageType.value : null,
+)
+const qualityPosition = computed({
+  get: () => (overlayPositionType.value ? qualityPositionByType.value[overlayPositionType.value] : 'default'),
+  set: (v: string) => { if (overlayPositionType.value) qualityPositionByType.value[overlayPositionType.value] = v },
+})
+const langPosition = computed({
+  get: () => (overlayPositionType.value ? langPositionByType.value[overlayPositionType.value] : 'default'),
+  set: (v: string) => { if (overlayPositionType.value) langPositionByType.value[overlayPositionType.value] = v },
+})
 function isQualityTier(key: string): boolean {
   return qualityTiers.value.includes(key)
 }
@@ -219,8 +234,20 @@ const blurDefaultLabel = computed(() =>
 const qualityStyleDefaultLabel = computed(() => annotate('Quality style', defaults.value?.quality_style, QUALITY_STYLE_LABELS))
 const qualityDirectionDefaultLabel = computed(() => annotate('Quality direction', defaults.value?.quality_direction, BADGE_DIRECTION_LABELS))
 const langIconDefaultLabel = computed(() => annotate('Language icon', defaults.value?.lang_icon, LANG_ICON_LABELS))
-const qualityPositionDefaultLabel = computed(() => annotate('Quality position', defaults.value?.quality_position, POSITION_LABELS))
-const langPositionDefaultLabel = computed(() => annotate('Language position', defaults.value?.lang_position, POSITION_LABELS))
+// Overlay anchor positions are per image type, so the "default (resolved)" label
+// reflects the selected type's matching server default field.
+const qualityPositionServerDefault = computed(() => {
+  const d = defaults.value
+  if (!d || !overlayPositionType.value) return null
+  return overlayPositionType.value === 'backdrop' ? d.backdrop_quality_position : d.poster_quality_position
+})
+const langPositionServerDefault = computed(() => {
+  const d = defaults.value
+  if (!d || !overlayPositionType.value) return null
+  return overlayPositionType.value === 'backdrop' ? d.backdrop_lang_position : d.poster_lang_position
+})
+const qualityPositionDefaultLabel = computed(() => annotate('Quality position', qualityPositionServerDefault.value, POSITION_LABELS))
+const langPositionDefaultLabel = computed(() => annotate('Language position', langPositionServerDefault.value, POSITION_LABELS))
 
 // Switching image type re-applies that type's own defaults: each type carries
 // its own server defaults (poster_badge_style vs logo_badge_style, etc.), so the
@@ -317,9 +344,12 @@ const queryString = computed(() => {
   if (langCodeVal && langIconActive) params.set('lang_code', langCodeVal)
   const langExcludeVal = langExclude.value.trim()
   if (langExcludeVal && langIconActive) params.set('lang_exclude', langExcludeVal)
-  // Anchor positions are meaningful only when the matching overlay actually
-  // renders, and are emitted only when the user overrides the server default —
-  // mirroring the gating for `quality_style`/`lang_code` above.
+  // Anchor positions are per image type (poster vs backdrop) and meaningful only
+  // when the matching overlay actually renders. `qualityPosition`/`langPosition`
+  // resolve to the selected type's value (and to 'default' for logo/episode,
+  // which ignore overlay positions), so a single `quality_position=`/
+  // `lang_position=` is emitted for the current type only when the user overrides
+  // that type's server default — mirroring the gating for `quality_style` above.
   if (qualityTiers.value.length && qualityPosition.value !== 'default')
     params.set('quality_position', qualityPosition.value)
   if (qualityTiers.value.length && qualityDirection.value !== 'default')
@@ -525,7 +555,11 @@ async function handleFetch() {
               <SelectItem value="text">Text</SelectItem>
             </SelectContent>
           </Select>
-          <Select v-model="qualityPosition">
+          <!-- Overlay anchor positions are per image type (poster vs backdrop);
+               logo/episode ignore them, so these only show for poster/backdrop.
+               The v-model resolves to the selected type's value, so a single
+               control feeds the right per-type `quality_position`/`lang_position`. -->
+          <Select v-if="overlayPositionType" v-model="qualityPosition">
             <SelectTrigger id="free-quality-position" aria-label="Quality badge position" class="bg-background">
               <SelectValue placeholder="Quality position: default" />
             </SelectTrigger>
@@ -541,7 +575,7 @@ async function handleFetch() {
               <SelectItem value="br">Bottom Right</SelectItem>
             </SelectContent>
           </Select>
-          <Select v-model="langPosition">
+          <Select v-if="overlayPositionType" v-model="langPosition">
             <SelectTrigger id="free-lang-position" aria-label="Main-language badge position" class="bg-background">
               <SelectValue placeholder="Language position: default" />
             </SelectTrigger>

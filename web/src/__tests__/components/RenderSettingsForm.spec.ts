@@ -53,8 +53,10 @@ const defaultSettings: RenderSettings = {
   quality_direction: 'd',
   lang_icon: 'off',
   lang_exclude: '',
-  quality_position: 'tr',
-  lang_position: 'tl',
+  poster_quality_position: 'tr',
+  backdrop_quality_position: 'tl',
+  poster_lang_position: 'tl',
+  backdrop_lang_position: 'bl',
 }
 
 function makeFetchPreview() {
@@ -257,10 +259,12 @@ describe('RenderSettingsForm', () => {
     expect(wrapper.find('[data-testid="lang-icon-select"]').exists()).toBe(true)
   })
 
-  it('renders quality-position and lang-position dropdowns', () => {
+  it('renders per-image-type quality-position and lang-position dropdowns', () => {
     const wrapper = mountForm()
-    expect(wrapper.find('[data-testid="quality-position-select"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="lang-position-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="poster-quality-position-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="backdrop-quality-position-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="poster-lang-position-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="backdrop-lang-position-select"]').exists()).toBe(true)
   })
 
   it('renders the lang-exclude text input', () => {
@@ -325,9 +329,15 @@ describe('RenderSettingsForm', () => {
     )
   })
 
-  it('includes quality_position and lang_position in the auto-save payload', async () => {
+  it('includes the four per-type quality/lang positions in the auto-save payload', async () => {
     const saveSettings = vi.fn().mockResolvedValue(null)
-    const settings = { ...defaultSettings, quality_position: 'bl', lang_position: 'br' }
+    const settings = {
+      ...defaultSettings,
+      poster_quality_position: 'bl',
+      backdrop_quality_position: 'br',
+      poster_lang_position: 'tc',
+      backdrop_lang_position: 'l',
+    }
     const wrapper = mount(RenderSettingsForm, {
       props: {
         settings,
@@ -342,12 +352,17 @@ describe('RenderSettingsForm', () => {
     })
 
     // Trigger an auto-save via an unrelated control; the payload carries the
-    // current quality_position/lang_position values from the loaded settings.
+    // current per-type position values from the loaded settings.
     await wrapper.find('[data-testid="textless-checkbox"]').setValue(true)
     await flushPromises()
 
     expect(saveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ quality_position: 'bl', lang_position: 'br' }),
+      expect.objectContaining({
+        poster_quality_position: 'bl',
+        backdrop_quality_position: 'br',
+        poster_lang_position: 'tc',
+        backdrop_lang_position: 'l',
+      }),
     )
   })
 

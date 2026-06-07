@@ -275,8 +275,10 @@ pub struct FreeKeySettingsResponse {
     pub episode_badge_background: BadgeBackground,
     pub quality_style: QualityStyle,
     pub lang_icon: LangIcon,
-    pub quality_position: BadgePosition,
-    pub lang_position: BadgePosition,
+    pub poster_quality_position: BadgePosition,
+    pub backdrop_quality_position: BadgePosition,
+    pub poster_lang_position: BadgePosition,
+    pub backdrop_lang_position: BadgePosition,
     pub quality_direction: BadgeDirection,
     pub lang_exclude: String,
 }
@@ -326,8 +328,10 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             episode_badge_background: s.episode_badge_background,
             quality_style: s.quality_style,
             lang_icon: s.lang_icon,
-            quality_position: s.quality_position,
-            lang_position: s.lang_position,
+            poster_quality_position: s.poster_quality_position,
+            backdrop_quality_position: s.backdrop_quality_position,
+            poster_lang_position: s.poster_lang_position,
+            backdrop_lang_position: s.backdrop_lang_position,
             quality_direction: s.quality_direction,
             lang_exclude: s.lang_exclude.to_string(),
         }
@@ -575,11 +579,21 @@ fn apply_query_overrides(
         db::validate_lang_code(code).map_err(|e| e.into_response())?;
         s.lang_code = Some(Arc::from(code.as_str()));
     }
+    // Overlay anchor positions are per-image-type (poster vs backdrop); logos
+    // and episodes don't use them, so the override is ignored there.
     if let Some(pos) = query.quality_position {
-        s.quality_position = pos;
+        match kind {
+            cache::ImageType::Poster => s.poster_quality_position = pos,
+            cache::ImageType::Backdrop => s.backdrop_quality_position = pos,
+            cache::ImageType::Logo | cache::ImageType::Episode => {}
+        }
     }
     if let Some(pos) = query.lang_position {
-        s.lang_position = pos;
+        match kind {
+            cache::ImageType::Poster => s.poster_lang_position = pos,
+            cache::ImageType::Backdrop => s.backdrop_lang_position = pos,
+            cache::ImageType::Logo | cache::ImageType::Episode => {}
+        }
     }
     if let Some(dir) = query.quality_direction {
         s.quality_direction = dir;

@@ -144,8 +144,8 @@ GET /{api_key}/isValid
 - `?lang_icon={off|flag|text}`: overlay a badge for the title's main language — `off` (default), `flag` (a country flag), or `text` (the uppercase ISO code, e.g. `EN`). The language is taken from TMDB's `original_language`; languages without a mapped flag fall back to text. Applies to all image types
 - `?lang_code={code}`: override the language used by `lang_icon` (ISO 639-1, e.g. `?lang_code=ja`). When omitted, the title's detected `original_language` is used. (This is independent of `?lang=`, which selects the image *artwork* language.)
 - `?lang_exclude={codes}`: comma-separated languages to *hide* the language badge for, matched against the title's main language (e.g. `?lang_exclude=en` shows the badge on every title except English ones — handy to flag only foreign-language titles). Region variants are matched by base language (`pt` excludes `pt-BR`)
-- `?quality_position={bc|tc|l|r|tl|tr|bl|br}`: anchor for the quality badge, independent of the rating badges and the language badge (default `tr`). Ignored on logos and episodes
-- `?lang_position={bc|tc|l|r|tl|tr|bl|br}`: anchor for the main-language badge, independent of the rating badges and the quality badge (default `tl`). Ignored on logos and episodes
+- `?quality_position={bc|tc|l|r|tl|tr|bl|br}`: anchor for the quality badge, independent of the rating badges and the language badge. Per image type with separate defaults — posters default to `tr`, backdrops to `tl`. Ignored on logos and episodes
+- `?lang_position={bc|tc|l|r|tl|tr|bl|br}`: anchor for the main-language badge, independent of the rating badges and the quality badge. Per image type — posters default to `tl`, backdrops to `bl`. Ignored on logos and episodes
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`). Old parameter names `?poster_source=` and `?fanart_textless=` are accepted as aliases
 
 `textless`, `split`, and `fit` are poster-only. `blur` is episode-only. `edge_inset_x`/`edge_inset_y` are backdrop-only. `badge_direction` and `position` are silently ignored on logo endpoints. `quality`, `quality_style`, `lang_icon`, `lang_code`, and `lang_exclude` apply to posters, backdrops, and logos — **episodes never show the quality or language badge**. `quality_position`/`lang_position`/`quality_direction` apply to posters and backdrops only (logos always stack their badges below the logo, so positions are ignored there; episodes show no overlay badges at all). For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `badge_shape`, `badge_background`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
@@ -400,8 +400,8 @@ Settings are stored as short single-character or two-character codes:
 | `quality_direction` | `d`, `h`, `v` | Quality badge layout: auto (default — column at corners/sides, row at top/bottom-center), horizontal, vertical |
 | `lang_icon` | `off`, `flag`, `text` | Main-language badge off (default), a country flag, or the ISO code |
 | `lang_exclude` | comma-separated codes | Languages to hide the language badge for (e.g. `en`); empty (default) = show for all |
-| `quality_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Quality badge anchor (default `tr`); independent of ratings/language |
-| `lang_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Language badge anchor (default `tl`); independent of ratings/quality |
+| `poster_quality_position` / `backdrop_quality_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Quality badge anchor, per image type (defaults: poster `tr`, backdrop `tl`); independent of ratings/language |
+| `poster_lang_position` / `backdrop_lang_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Language badge anchor, per image type (defaults: poster `tl`, backdrop `bl`); independent of ratings/quality |
 
 ### Example Cache Keys
 

@@ -90,8 +90,10 @@ async function toggleFreeApiKey() {
     quality_direction: s.quality_direction,
     lang_icon: s.lang_icon,
     lang_exclude: s.lang_exclude,
-    quality_position: s.quality_position,
-    lang_position: s.lang_position,
+    poster_quality_position: s.poster_quality_position,
+    backdrop_quality_position: s.backdrop_quality_position,
+    poster_lang_position: s.poster_lang_position,
+    backdrop_lang_position: s.backdrop_lang_position,
     free_api_key_enabled: newVal,
   })
   if (res.ok) {

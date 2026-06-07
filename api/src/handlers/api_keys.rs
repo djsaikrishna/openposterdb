@@ -138,8 +138,10 @@ pub struct RenderSettingsResponse {
     pub quality_style: QualityStyle,
     pub lang_icon: LangIcon,
     pub lang_exclude: String,
-    pub quality_position: BadgePosition,
-    pub lang_position: BadgePosition,
+    pub poster_quality_position: BadgePosition,
+    pub backdrop_quality_position: BadgePosition,
+    pub poster_lang_position: BadgePosition,
+    pub backdrop_lang_position: BadgePosition,
     pub quality_direction: BadgeDirection,
 }
 
@@ -201,8 +203,10 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         quality_style: settings.quality_style,
         lang_icon: settings.lang_icon,
         lang_exclude: settings.lang_exclude.to_string(),
-        quality_position: settings.quality_position,
-        lang_position: settings.lang_position,
+        poster_quality_position: settings.poster_quality_position,
+        backdrop_quality_position: settings.backdrop_quality_position,
+        poster_lang_position: settings.poster_lang_position,
+        backdrop_lang_position: settings.backdrop_lang_position,
         quality_direction: settings.quality_direction,
     }
 }
@@ -295,10 +299,14 @@ pub struct UpdateSettingsRequest {
     pub lang_icon: LangIcon,
     #[serde(default = "db::default_lang_exclude")]
     pub lang_exclude: String,
-    #[serde(default = "db::default_quality_position")]
-    pub quality_position: BadgePosition,
-    #[serde(default = "db::default_lang_position")]
-    pub lang_position: BadgePosition,
+    #[serde(default = "db::default_poster_quality_position")]
+    pub poster_quality_position: BadgePosition,
+    #[serde(default = "db::default_backdrop_quality_position")]
+    pub backdrop_quality_position: BadgePosition,
+    #[serde(default = "db::default_poster_lang_position")]
+    pub poster_lang_position: BadgePosition,
+    #[serde(default = "db::default_backdrop_lang_position")]
+    pub backdrop_lang_position: BadgePosition,
     #[serde(default = "db::default_quality_direction")]
     pub quality_direction: BadgeDirection,
 }
@@ -349,9 +357,11 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         quality_style: req.quality_style.as_str(),
         lang_icon: req.lang_icon.as_str(),
         lang_exclude: &req.lang_exclude,
-        quality_position: req.quality_position.as_str(),
+        poster_quality_position: req.poster_quality_position.as_str(),
+        backdrop_quality_position: req.backdrop_quality_position.as_str(),
         quality_direction: req.quality_direction.as_str(),
-        lang_position: req.lang_position.as_str(),
+        poster_lang_position: req.poster_lang_position.as_str(),
+        backdrop_lang_position: req.backdrop_lang_position.as_str(),
     }
 }
 

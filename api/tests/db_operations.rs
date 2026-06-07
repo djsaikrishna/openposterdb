@@ -50,9 +50,11 @@ fn test_upsert(key_id: i32) -> UpsertApiKeySettings<'static> {
         quality_style: "text",
         lang_icon: "off",
         lang_exclude: "",
-        quality_position: "tr",
+        poster_quality_position: "tr",
+        backdrop_quality_position: "tl",
         quality_direction: "d",
-        lang_position: "tl",
+        poster_lang_position: "tl",
+        backdrop_lang_position: "bl",
     }
 }
 

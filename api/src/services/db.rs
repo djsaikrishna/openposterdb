@@ -1013,14 +1013,24 @@ pub fn default_lang_icon() -> LangIcon {
     LangIcon::Off
 }
 
-/// Default anchor for the quality overlay badge: top-right.
-pub fn default_quality_position() -> BadgePosition {
+/// Default poster anchor for the quality overlay badge: top-right.
+pub fn default_poster_quality_position() -> BadgePosition {
     BadgePosition::TopRight
 }
 
-/// Default anchor for the main-language overlay badge: top-left.
-pub fn default_lang_position() -> BadgePosition {
+/// Default backdrop anchor for the quality overlay badge: top-left.
+pub fn default_backdrop_quality_position() -> BadgePosition {
     BadgePosition::TopLeft
+}
+
+/// Default poster anchor for the main-language overlay badge: top-left.
+pub fn default_poster_lang_position() -> BadgePosition {
+    BadgePosition::TopLeft
+}
+
+/// Default backdrop anchor for the main-language overlay badge: bottom-left.
+pub fn default_backdrop_lang_position() -> BadgePosition {
+    BadgePosition::BottomLeft
 }
 
 /// Default layout direction for stacked quality badges: `Default` (auto —
@@ -1105,33 +1115,36 @@ fn lang_exclude_cache_token(exclude: &str) -> String {
     codes.join("_")
 }
 
-/// Cache-key token for the quality (#1) and language (#6) overlay badges. Empty
-/// when neither is active, so default configs keep their existing cache keys (no
-/// migration). The derived title language (no override) is intentionally omitted
-/// because it is a function of the title id already present in the key; only an
-/// explicit `lang_code` override is encoded.
-pub fn overlay_cache_suffix(settings: &RenderSettings) -> String {
-    overlay_cache_suffix_inner(settings, true)
-}
+/// Cache-key token for the quality (#1) and language (#6) overlay badges, for a
+/// given image type. Empty when neither is active, so default configs keep their
+/// existing cache keys (no migration). The derived title language (no override)
+/// is intentionally omitted because it is a function of the title id already
+/// present in the key; only an explicit `lang_code` override is encoded.
+///
+/// Anchor positions are per-image-type: posters and backdrops encode their own
+/// `.qp`/`.lp` (and `.qd`) tokens. Logos stack their overlay badges below the
+/// logo and ignore positions/direction (see `render_logo_sync`), so those tokens
+/// are omitted there — otherwise byte-identical logo renders would split across
+/// distinct cache entries. Episodes don't render the overlay at all and never
+/// call this.
+pub fn overlay_cache_suffix(settings: &RenderSettings, kind: crate::cache::ImageType) -> String {
+    use crate::cache::ImageType;
+    let anchors = match kind {
+        ImageType::Logo => None,
+        ImageType::Backdrop => Some((settings.backdrop_quality_position, settings.backdrop_lang_position)),
+        // Poster (and Episode, which doesn't call this) use the poster anchors.
+        ImageType::Poster | ImageType::Episode => {
+            Some((settings.poster_quality_position, settings.poster_lang_position))
+        }
+    };
 
-/// Logo-specific overlay token. Logos always stack their quality/language
-/// badges below the logo and ignore the anchor positions and quality direction
-/// (see `render_logo_sync`), so encoding `.qp`/`.lp`/`.qd` here would split
-/// byte-identical logo renders across distinct cache entries. This omits those
-/// three tokens while keeping `.q{style}{tiers}`, `.li{icon}`(`-{code}`), and
-/// `.lx{codes}` — all of which still affect the rendered logo.
-pub fn overlay_cache_suffix_logo(settings: &RenderSettings) -> String {
-    overlay_cache_suffix_inner(settings, false)
-}
-
-fn overlay_cache_suffix_inner(settings: &RenderSettings, include_anchors: bool) -> String {
     let mut out = String::new();
     let tiers = parse_quality_tiers(&settings.quality);
     if !tiers.is_empty() {
         let chars: String = tiers.iter().map(|t| t.cache_char()).collect();
         out.push_str(&format!(".q{}{}", settings.quality_style.cache_char(), chars));
-        if include_anchors {
-            out.push_str(&format!(".qp{}", settings.quality_position.as_str()));
+        if let Some((qp, _)) = anchors {
+            out.push_str(&format!(".qp{}", qp.as_str()));
             // Auto (Default) follows the rating badges' direction, already in the
             // key via the `.d{dir}` token — only an explicit override needs encoding.
             if settings.quality_direction != BadgeDirection::Default {
@@ -1149,8 +1162,8 @@ fn overlay_cache_suffix_inner(settings: &RenderSettings, include_anchors: bool) 
             out.push('-');
             out.push_str(&code);
         }
-        if include_anchors {
-            out.push_str(&format!(".lp{}", settings.lang_position.as_str()));
+        if let Some((_, lp)) = anchors {
+            out.push_str(&format!(".lp{}", lp.as_str()));
         }
         // Excluded languages change which titles get a badge, so they must be in
         // the key. (The per-title language itself is a function of the title id,
@@ -1454,89 +1467,93 @@ mod tests {
 
     #[test]
     fn overlay_cache_suffix_empty_by_default() {
+        use crate::cache::ImageType;
         let s = RenderSettings::default();
-        assert_eq!(overlay_cache_suffix(&s), "", "default config must keep existing cache keys");
+        for kind in [ImageType::Poster, ImageType::Backdrop, ImageType::Logo, ImageType::Episode] {
+            assert_eq!(overlay_cache_suffix(&s, kind), "", "default config must keep existing cache keys");
+        }
     }
 
     #[test]
     fn overlay_cache_suffix_encodes_quality_and_language() {
+        use crate::cache::ImageType;
         let mut s = RenderSettings::default();
         s.quality = Arc::from("4k,dv");
         s.quality_style = QualityStyle::Logo;
         s.lang_icon = LangIcon::Flag;
-        let suffix = overlay_cache_suffix(&s);
+        let suffix = overlay_cache_suffix(&s, ImageType::Poster);
         assert!(suffix.contains(".ql4v"), "quality token missing: {suffix}");
         assert!(suffix.contains(".lif"), "lang token missing: {suffix}");
-        // Independent positions are encoded (defaults tr/tl).
-        assert!(suffix.contains(".qptr"), "quality position missing: {suffix}");
-        assert!(suffix.contains(".lptl"), "lang position missing: {suffix}");
-        // A different quality position changes the key.
+        // Per-type positions: posters default tr/tl, backdrops default tl/bl.
+        assert!(suffix.contains(".qptr"), "poster quality position missing: {suffix}");
+        assert!(suffix.contains(".lptl"), "poster lang position missing: {suffix}");
+        let backdrop = overlay_cache_suffix(&s, ImageType::Backdrop);
+        assert!(backdrop.contains(".qptl"), "backdrop quality position missing: {backdrop}");
+        assert!(backdrop.contains(".lpbl"), "backdrop lang position missing: {backdrop}");
+        // Poster and backdrop tokens differ (different default anchors).
+        assert_ne!(suffix, backdrop);
+        // A different poster quality position changes the poster key.
         let mut sp = s.clone();
-        sp.quality_position = BadgePosition::BottomLeft;
-        assert!(overlay_cache_suffix(&sp).contains(".qpbl"));
-        assert_ne!(overlay_cache_suffix(&s), overlay_cache_suffix(&sp));
+        sp.poster_quality_position = BadgePosition::BottomLeft;
+        assert!(overlay_cache_suffix(&sp, ImageType::Poster).contains(".qpbl"));
+        assert_ne!(overlay_cache_suffix(&s, ImageType::Poster), overlay_cache_suffix(&sp, ImageType::Poster));
         // Auto quality direction (default) emits no token; an explicit one does.
-        assert!(!overlay_cache_suffix(&s).contains(".qd"));
+        assert!(!overlay_cache_suffix(&s, ImageType::Poster).contains(".qd"));
         let mut sd = s.clone();
         sd.quality_direction = BadgeDirection::Vertical;
-        assert!(overlay_cache_suffix(&sd).contains(".qdv"));
-        assert_ne!(overlay_cache_suffix(&s), overlay_cache_suffix(&sd));
-        // An explicit lang_code override is encoded; the derived one is not.
+        assert!(overlay_cache_suffix(&sd, ImageType::Poster).contains(".qdv"));
+        // An explicit lang_code override is encoded (canonicalized); derived isn't.
         let mut s2 = s.clone();
         s2.lang_code = Some(Arc::from("ja"));
-        assert!(overlay_cache_suffix(&s2).contains(".lif-ja"));
-        // The override is canonicalized before encoding, so equivalent forms
-        // (which render the identical badge) share one cache entry.
+        assert!(overlay_cache_suffix(&s2, ImageType::Poster).contains(".lif-ja"));
         let mut s_region = s.clone();
         s_region.lang_code = Some(Arc::from("PT-BR"));
-        assert!(
-            overlay_cache_suffix(&s_region).contains(".lif-pt"),
-            "lang_code must be canonicalized: {}",
-            overlay_cache_suffix(&s_region)
-        );
         let mut s_pt = s.clone();
         s_pt.lang_code = Some(Arc::from("pt"));
-        assert_eq!(overlay_cache_suffix(&s_region), overlay_cache_suffix(&s_pt));
+        assert!(overlay_cache_suffix(&s_region, ImageType::Poster).contains(".lif-pt"));
+        assert_eq!(overlay_cache_suffix(&s_region, ImageType::Poster), overlay_cache_suffix(&s_pt, ImageType::Poster));
         // A code that canonicalizes to "no language" draws no flag → no token.
         let mut s_none = s.clone();
         s_none.lang_code = Some(Arc::from("xx"));
-        assert!(!overlay_cache_suffix(&s_none).contains(".lif-"));
+        assert!(!overlay_cache_suffix(&s_none, ImageType::Poster).contains(".lif-"));
         // Text style + text lang produce distinct tokens.
         let mut s3 = RenderSettings::default();
         s3.quality = Arc::from("4k");
         s3.lang_icon = LangIcon::Text;
-        assert!(overlay_cache_suffix(&s3).contains(".qt4"));
-        assert!(overlay_cache_suffix(&s3).contains(".lit"));
+        assert!(overlay_cache_suffix(&s3, ImageType::Poster).contains(".qt4"));
+        assert!(overlay_cache_suffix(&s3, ImageType::Poster).contains(".lit"));
     }
 
     #[test]
     fn overlay_cache_suffix_logo_omits_anchor_tokens() {
+        use crate::cache::ImageType;
         let mut s = RenderSettings::default();
         s.quality = Arc::from("4k");
         s.quality_style = QualityStyle::Logo;
         s.lang_icon = LangIcon::Flag;
         s.lang_exclude = Arc::from("en");
         // The discriminating tokens that still affect the logo render are kept.
-        let logo = overlay_cache_suffix_logo(&s);
+        let logo = overlay_cache_suffix(&s, ImageType::Logo);
         assert!(logo.contains(".ql4"), "quality token missing: {logo}");
         assert!(logo.contains(".lif"), "lang token missing: {logo}");
         assert!(logo.contains(".lxen"), "lang-exclude token missing: {logo}");
-        // The anchor positions / quality direction are ignored by logos, so
-        // they are never encoded.
+        // The anchor positions / quality direction are ignored by logos.
         assert!(!logo.contains(".qp"), "logo must omit quality position: {logo}");
         assert!(!logo.contains(".lp"), "logo must omit lang position: {logo}");
         // Two logos differing only in position/direction share one cache entry.
         let mut moved = s.clone();
-        moved.quality_position = BadgePosition::BottomLeft;
-        moved.lang_position = BadgePosition::BottomRight;
+        moved.poster_quality_position = BadgePosition::BottomRight;
+        moved.backdrop_quality_position = BadgePosition::BottomRight;
+        moved.poster_lang_position = BadgePosition::TopCenter;
+        moved.backdrop_lang_position = BadgePosition::TopCenter;
         moved.quality_direction = BadgeDirection::Vertical;
         assert_eq!(
-            overlay_cache_suffix_logo(&s),
-            overlay_cache_suffix_logo(&moved),
+            overlay_cache_suffix(&s, ImageType::Logo),
+            overlay_cache_suffix(&moved, ImageType::Logo),
             "logo positions/direction must not affect the cache key"
         );
-        // Sanity: the non-logo token does still split on those settings.
-        assert_ne!(overlay_cache_suffix(&s), overlay_cache_suffix(&moved));
+        // Sanity: the poster token does still split on those settings.
+        assert_ne!(overlay_cache_suffix(&s, ImageType::Poster), overlay_cache_suffix(&moved, ImageType::Poster));
     }
 
     #[test]
@@ -1583,17 +1600,18 @@ mod tests {
 
     #[test]
     fn overlay_cache_suffix_encodes_lang_exclude() {
+        use crate::cache::ImageType;
         let mut s = RenderSettings::default();
         s.lang_icon = LangIcon::Flag;
         // No exclude → no .lx token.
-        assert!(!overlay_cache_suffix(&s).contains(".lx"));
+        assert!(!overlay_cache_suffix(&s, ImageType::Poster).contains(".lx"));
         // Exclude is normalized (base, lowercased, sorted, deduped, '_'-joined).
         s.lang_exclude = Arc::from("PT-BR, en, en");
-        assert!(overlay_cache_suffix(&s).contains(".lxen_pt"));
+        assert!(overlay_cache_suffix(&s, ImageType::Poster).contains(".lxen_pt"));
         // Exclude only matters when the language badge is on.
         let mut off = RenderSettings::default();
         off.lang_exclude = Arc::from("en");
-        assert!(!overlay_cache_suffix(&off).contains(".lx"));
+        assert!(!overlay_cache_suffix(&off, ImageType::Poster).contains(".lx"));
     }
 
     #[test]
@@ -2561,9 +2579,11 @@ pub struct UpsertApiKeySettings<'a> {
     pub quality_style: &'a str,
     pub lang_icon: &'a str,
     pub lang_exclude: &'a str,
-    pub quality_position: &'a str,
+    pub poster_quality_position: &'a str,
+    pub backdrop_quality_position: &'a str,
     pub quality_direction: &'a str,
-    pub lang_position: &'a str,
+    pub poster_lang_position: &'a str,
+    pub backdrop_lang_position: &'a str,
 }
 
 pub async fn upsert_api_key_settings(
@@ -2615,9 +2635,11 @@ pub async fn upsert_api_key_settings(
         quality_style: Set(params.quality_style.to_string()),
         lang_icon: Set(params.lang_icon.to_string()),
         lang_exclude: Set(params.lang_exclude.to_string()),
-        quality_position: Set(params.quality_position.to_string()),
+        poster_quality_position: Set(params.poster_quality_position.to_string()),
+        backdrop_quality_position: Set(params.backdrop_quality_position.to_string()),
         quality_direction: Set(params.quality_direction.to_string()),
-        lang_position: Set(params.lang_position.to_string()),
+        poster_lang_position: Set(params.poster_lang_position.to_string()),
+        backdrop_lang_position: Set(params.backdrop_lang_position.to_string()),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -2666,9 +2688,11 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::QualityStyle,
                     api_key_settings::Column::LangIcon,
                     api_key_settings::Column::LangExclude,
-                    api_key_settings::Column::QualityPosition,
+                    api_key_settings::Column::PosterQualityPosition,
+                    api_key_settings::Column::BackdropQualityPosition,
                     api_key_settings::Column::QualityDirection,
-                    api_key_settings::Column::LangPosition,
+                    api_key_settings::Column::PosterLangPosition,
+                    api_key_settings::Column::BackdropLangPosition,
                 ])
                 .to_owned(),
         )
@@ -2756,18 +2780,21 @@ pub struct RenderSettings {
     /// only from the `?lang_code=` query param. When `None`, the title's
     /// resolved `original_language` is used.
     pub lang_code: Option<Arc<str>>,
-    /// Anchor position for the quality overlay badge, independent of the rating
-    /// badges and the language badge. Applies to poster/backdrop/episode
-    /// (ignored for logos). Persisted. Default: top-right.
-    pub quality_position: BadgePosition,
+    /// Poster anchor for the quality overlay badge (default top-right).
+    /// Persisted. Independent of the ratings and the language badge.
+    pub poster_quality_position: BadgePosition,
+    /// Backdrop anchor for the quality overlay badge (default top-left). Persisted.
+    pub backdrop_quality_position: BadgePosition,
     /// Layout direction for stacked quality badges. `Default` (auto) resolves
     /// from the quality badge's anchor (column at corners/sides, row at
     /// top/bottom-center). Persisted.
     pub quality_direction: BadgeDirection,
-    /// Anchor position for the main-language overlay badge, independent of the
-    /// rating badges and the quality badge. Applies to poster/backdrop/episode
-    /// (ignored for logos). Persisted. Default: top-left.
-    pub lang_position: BadgePosition,
+    /// Poster anchor for the main-language overlay badge (default top-left).
+    /// Persisted. Independent of the ratings and the quality badge.
+    pub poster_lang_position: BadgePosition,
+    /// Backdrop anchor for the main-language overlay badge (default bottom-left).
+    /// Persisted.
+    pub backdrop_lang_position: BadgePosition,
 }
 
 impl RenderSettings {
@@ -2838,9 +2865,11 @@ impl Default for RenderSettings {
             lang_icon: default_lang_icon(),
             lang_exclude: Arc::from(""),
             lang_code: None,
-            quality_position: default_quality_position(),
+            poster_quality_position: default_poster_quality_position(),
+            backdrop_quality_position: default_backdrop_quality_position(),
             quality_direction: default_quality_direction(),
-            lang_position: default_lang_position(),
+            poster_lang_position: default_poster_lang_position(),
+            backdrop_lang_position: default_backdrop_lang_position(),
         }
     }
 }
@@ -2936,9 +2965,11 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         lang_icon: global_or(globals, "lang_icon", LangIcon::parse, defaults.lang_icon),
         lang_exclude: arc_or("lang_exclude", defaults.lang_exclude),
         lang_code: None,
-        quality_position: global_or(globals, "quality_position", BadgePosition::parse, defaults.quality_position),
+        poster_quality_position: global_or(globals, "poster_quality_position", BadgePosition::parse, defaults.poster_quality_position),
+        backdrop_quality_position: global_or(globals, "backdrop_quality_position", BadgePosition::parse, defaults.backdrop_quality_position),
         quality_direction: global_or(globals, "quality_direction", BadgeDirection::parse, defaults.quality_direction),
-        lang_position: global_or(globals, "lang_position", BadgePosition::parse, defaults.lang_position),
+        poster_lang_position: global_or(globals, "poster_lang_position", BadgePosition::parse, defaults.poster_lang_position),
+        backdrop_lang_position: global_or(globals, "backdrop_lang_position", BadgePosition::parse, defaults.backdrop_lang_position),
     }
 }
 
@@ -2997,9 +3028,11 @@ pub async fn get_effective_render_settings(
                 lang_icon: parse_setting_or_default(&s.lang_icon, "lang_icon", LangIcon::parse, default_lang_icon()),
                 lang_exclude: Arc::from(s.lang_exclude.as_str()),
                 lang_code: None,
-                quality_position: parse_setting_or_default(&s.quality_position, "quality_position", BadgePosition::parse, default_quality_position()),
+                poster_quality_position: parse_setting_or_default(&s.poster_quality_position, "poster_quality_position", BadgePosition::parse, default_poster_quality_position()),
+                backdrop_quality_position: parse_setting_or_default(&s.backdrop_quality_position, "backdrop_quality_position", BadgePosition::parse, default_backdrop_quality_position()),
                 quality_direction: parse_setting_or_default(&s.quality_direction, "quality_direction", BadgeDirection::parse, default_quality_direction()),
-                lang_position: parse_setting_or_default(&s.lang_position, "lang_position", BadgePosition::parse, default_lang_position()),
+                poster_lang_position: parse_setting_or_default(&s.poster_lang_position, "poster_lang_position", BadgePosition::parse, default_poster_lang_position()),
+                backdrop_lang_position: parse_setting_or_default(&s.backdrop_lang_position, "backdrop_lang_position", BadgePosition::parse, default_backdrop_lang_position()),
             };
         }
         Ok(None) => {} // no per-key override, fall through

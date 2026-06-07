@@ -153,10 +153,17 @@ fn lang_code_label(code: &str) -> String {
 /// positioned groups. Each group is empty when its feature is inactive. Called
 /// after `apply_rating_preferences` so these badges bypass ratings
 /// ordering/exclusion/limit.
-fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId) -> generate::OverlaySpec {
+fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId, kind: cache::ImageType) -> generate::OverlaySpec {
     use crate::image::badge::OverlayBadge;
     use crate::image::icons;
     use crate::services::db::{self, LangIcon, QualityStyle};
+
+    // Overlay anchor positions are per-image-type. Logos ignore them (badges
+    // stack below the logo); episodes don't render the overlay at all.
+    let (quality_position, language_position) = match kind {
+        cache::ImageType::Backdrop => (settings.backdrop_quality_position, settings.backdrop_lang_position),
+        _ => (settings.poster_quality_position, settings.poster_lang_position),
+    };
 
     let mut quality: Vec<OverlayBadge> = Vec::new();
     let mut language: Vec<OverlayBadge> = Vec::new();
@@ -199,10 +206,10 @@ fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId) ->
 
     generate::OverlaySpec {
         quality,
-        quality_position: settings.quality_position,
+        quality_position,
         quality_direction: settings.quality_direction,
         language,
-        language_position: settings.lang_position,
+        language_position,
     }
 }
 
@@ -297,17 +304,19 @@ pub fn settings_cache_suffix_with_ratings(
         lang_icon: _,       // folded into `ql`
         lang_exclude: _,    // folded into `ql`
         lang_code: _,       // folded into `ql`
-        quality_position: _,// folded into `ql`
-        quality_direction: _,// folded into `ql`
-        lang_position: _,   // folded into `ql`
+        poster_quality_position: _,  // folded into `ql`
+        backdrop_quality_position: _,// folded into `ql`
+        quality_direction: _,        // folded into `ql`
+        poster_lang_position: _,     // folded into `ql`
+        backdrop_lang_position: _,   // folded into `ql`
     } = settings;
 
     let resolved_size = resolve_image_size(image_size);
     let is_suffix = resolved_size.cache_suffix();
     let rs = ratings_suffix;
-    // Quality + language overlay badges apply to every image type, so append
-    // the same token in each arm (empty for the default config).
-    let ql = crate::services::db::overlay_cache_suffix(settings);
+    // Quality + language overlay token is per-image-type (anchors differ per
+    // type; logos omit anchors; episodes render no overlay), so it's computed
+    // inside each arm below.
 
     match kind {
         cache::ImageType::Poster => {
@@ -327,6 +336,7 @@ pub fn settings_cache_suffix_with_ratings(
             // pre-feature poster cache keys — all native — stay valid and the
             // default reuses them. Opting into cover/pad/blur emits a token.
             let fit = settings.poster_fit.cache_suffix();
+            let ql = crate::services::db::overlay_cache_suffix(settings, cache::ImageType::Poster);
             // Shape/background sit immediately after badge size (before the
             // optional split token) so the v003 cache-key migration can insert
             // their defaults with a single uniform rule across all image types.
@@ -339,11 +349,11 @@ pub fn settings_cache_suffix_with_ratings(
             let shp = badge_shape_cache_suffix(settings.logo_badge_shape.as_str());
             let bgd = badge_background_cache_suffix(settings.logo_badge_background.as_str());
             // Logos stack their overlay badges below the logo and ignore the
-            // anchor positions / quality direction, so use the logo-specific
-            // token that omits `.qp`/`.lp`/`.qd` — otherwise byte-identical logo
-            // renders would split across distinct cache entries.
-            let ql_logo = crate::services::db::overlay_cache_suffix_logo(settings);
-            format!("{rs}{bs}{ls}{bsz}{shp}{bgd}{ql_logo}{is_suffix}")
+            // anchor positions / quality direction, so the Logo token omits
+            // `.qp`/`.lp`/`.qd` — otherwise byte-identical logo renders would
+            // split across distinct cache entries.
+            let ql = crate::services::db::overlay_cache_suffix(settings, cache::ImageType::Logo);
+            format!("{rs}{bs}{ls}{bsz}{shp}{bgd}{ql}{is_suffix}")
         }
         cache::ImageType::Backdrop => {
             let ps = position_cache_suffix(settings.backdrop_position.as_str());
@@ -356,6 +366,7 @@ pub fn settings_cache_suffix_with_ratings(
             // Edge inset sits after background (before image size) and is only
             // present when non-zero, so default backdrop keys are unchanged.
             let ei = edge_inset_cache_suffix(settings.backdrop_position, settings.backdrop_edge_inset_x, settings.backdrop_edge_inset_y);
+            let ql = crate::services::db::overlay_cache_suffix(settings, cache::ImageType::Backdrop);
             format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{ei}{ql}{is_suffix}")
         }
         cache::ImageType::Episode => {
@@ -1278,7 +1289,7 @@ fn trigger_logo_backdrop_refresh(
                 resolved_size.badge_scale(cache::ImageType::Backdrop) * badge_size_factor,
             ),
         };
-        let overlay = build_overlay_badges(&settings, &resolved);
+        let overlay = build_overlay_badges(&settings, &resolved, lb_kind.into());
         let bytes = match lb_kind {
             LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, overlay, state2.font.clone(), params.badge_style, params.label_style, params.appearance, state2.render_semaphore.clone(), target_width, badge_scale).await?,
             LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, overlay, state2.font.clone(), state2.config.image_quality, params.position, params.badge_style, params.label_style, params.appearance, params.badge_direction, state2.render_semaphore.clone(), target_width, badge_scale, params.badge_size, params.edge_inset_x, params.edge_inset_y).await?,
@@ -1467,7 +1478,7 @@ async fn generate_poster_with_source(
     let badge_scale = resolved_size.badge_scale(cache::ImageType::Poster) * settings.poster_badge_size.scale_factor();
     let tmdb_size: Arc<str> = resolved_size.tmdb_size().into();
 
-    let overlay = build_overlay_badges(settings, resolved);
+    let overlay = build_overlay_badges(settings, resolved, cache::ImageType::Poster);
     let bytes = generate::generate_poster(generate::ImageParams {
         poster_path,
         badges: &badges,
@@ -2049,7 +2060,7 @@ pub async fn handle_logo_backdrop_inner(
         type_edge_inset_y: params.edge_inset_y,
         badge_size_factor: params.badge_size.scale_factor(),
         label,
-        overlay: build_overlay_badges(settings, &resolved),
+        overlay: build_overlay_badges(settings, &resolved, image_type),
         resolved: resolved.clone(),
         badges,
         cross_ids: cross_ids.clone(),

@@ -403,11 +403,19 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "duplicate column",
     ),
     (
-        "ALTER TABLE api_key_settings ADD COLUMN quality_position TEXT NOT NULL DEFAULT 'tr'",
+        "ALTER TABLE api_key_settings ADD COLUMN poster_quality_position TEXT NOT NULL DEFAULT 'tr'",
         "duplicate column",
     ),
     (
-        "ALTER TABLE api_key_settings ADD COLUMN lang_position TEXT NOT NULL DEFAULT 'tl'",
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_quality_position TEXT NOT NULL DEFAULT 'tl'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN poster_lang_position TEXT NOT NULL DEFAULT 'tl'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_lang_position TEXT NOT NULL DEFAULT 'bl'",
         "duplicate column",
     ),
     (

@@ -51,8 +51,10 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     quality_direction: 'd',
     lang_icon: 'off',
     lang_exclude: '',
-    quality_position: 'tr',
-    lang_position: 'tl',
+    poster_quality_position: 'tr',
+    backdrop_quality_position: 'tl',
+    poster_lang_position: 'tl',
+    backdrop_lang_position: 'bl',
     ...overrides,
   }
 }
@@ -691,10 +693,28 @@ describe('FreeApiKeyCard', () => {
     expect(text).toContain('Language icon: default (Flag)')
   })
 
-  it('renders the quality-position and lang-position selects', () => {
+  it('renders the quality-position and lang-position selects for poster', () => {
     const wrapper = mountCard(true)
     expect(wrapper.find('#free-quality-position').exists()).toBe(true)
     expect(wrapper.find('#free-lang-position').exists()).toBe(true)
+  })
+
+  it('renders the quality-position and lang-position selects for backdrop', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    expect(wrapper.find('#free-quality-position').exists()).toBe(true)
+    expect(wrapper.find('#free-lang-position').exists()).toBe(true)
+  })
+
+  it('hides the overlay-position selects for logo and episode (positions ignored)', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(wrapper.find('#free-quality-position').exists()).toBe(false)
+    expect(wrapper.find('#free-lang-position').exists()).toBe(false)
+
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+    expect(wrapper.find('#free-quality-position').exists()).toBe(false)
+    expect(wrapper.find('#free-lang-position').exists()).toBe(false)
   })
 
   it('renders the quality-direction select', () => {
@@ -739,6 +759,27 @@ describe('FreeApiKeyCard', () => {
     expect(findCurlCode(wrapper).text()).toContain('quality_position=bl')
   })
 
+  it('emits the per-image-type quality_position for the selected type', async () => {
+    const wrapper = mountCard(true)
+    await wrapper.find('#free-quality-4k').trigger('click')
+    await flushPromises()
+
+    // Poster value.
+    await setSelectById(wrapper, 'free-quality-position', 'bl')
+    expect(findCurlCode(wrapper).text()).toContain('quality_position=bl')
+
+    // Switch to backdrop — the poster override no longer applies; set a distinct
+    // backdrop value and confirm it's the one emitted for backdrop.
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    expect(findCurlCode(wrapper).text()).not.toContain('quality_position=bl')
+    await setSelectById(wrapper, 'free-quality-position', 'tc')
+    expect(findCurlCode(wrapper).text()).toContain('quality_position=tc')
+
+    // Switch back to poster — the poster value is remembered per type.
+    await setSelectById(wrapper, 'free-image-type', 'poster')
+    expect(findCurlCode(wrapper).text()).toContain('quality_position=bl')
+  })
+
   it('omits quality_position while it matches the default sentinel', async () => {
     const wrapper = mountCard(true)
     await wrapper.find('#free-quality-4k').trigger('click')
@@ -758,11 +799,23 @@ describe('FreeApiKeyCard', () => {
     expect(findCurlCode(wrapper).text()).toContain('lang_position=br')
   })
 
-  it('annotates quality_position and lang_position defaults with the server values', () => {
-    const wrapper = mountCard(true, makeDefaults({ quality_position: 'bl', lang_position: 'br' }))
-    const text = wrapper.text()
+  it('annotates per-type quality_position and lang_position defaults with the server values', async () => {
+    const wrapper = mountCard(true, makeDefaults({
+      poster_quality_position: 'bl',
+      poster_lang_position: 'br',
+      backdrop_quality_position: 'tc',
+      backdrop_lang_position: 'l',
+    }))
+    // Default type is poster — labels reflect the poster server defaults.
+    let text = wrapper.text()
     expect(text).toContain('Quality position: default (Bottom Left)')
     expect(text).toContain('Language position: default (Bottom Right)')
+
+    // Switching to backdrop reflects the backdrop server defaults.
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    text = wrapper.text()
+    expect(text).toContain('Quality position: default (Top Center)')
+    expect(text).toContain('Language position: default (Left)')
   })
 
   it('loads and reflects server defaults via the API on mount', async () => {

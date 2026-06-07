@@ -55,12 +55,16 @@ pub struct Model {
     pub lang_icon: String,
     /// Comma-separated languages to exclude from the language badge (e.g. `en`).
     pub lang_exclude: String,
-    /// Anchor position for the quality overlay badge (e.g. `tr`).
-    pub quality_position: String,
+    /// Poster anchor for the quality overlay badge (e.g. `tr`).
+    pub poster_quality_position: String,
+    /// Backdrop anchor for the quality overlay badge (e.g. `tl`).
+    pub backdrop_quality_position: String,
     /// Layout direction for stacked quality badges (`d` auto, `h`, `v`).
     pub quality_direction: String,
-    /// Anchor position for the main-language overlay badge (e.g. `tl`).
-    pub lang_position: String,
+    /// Poster anchor for the main-language overlay badge (e.g. `tl`).
+    pub poster_lang_position: String,
+    /// Backdrop anchor for the main-language overlay badge (e.g. `bl`).
+    pub backdrop_lang_position: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
