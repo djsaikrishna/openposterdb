@@ -171,7 +171,7 @@ static FLAGS: LazyLock<HashMap<&'static str, RgbaImage>> =
 /// Map a title's main language (ISO 639-1, region-stripped) to a representative
 /// country whose flag we bundle. TMDB `original_language` is a *language* code,
 /// not a country, so this picks the most common representative flag (e.g.
-/// `en`→US, `pt`→Portugal). Returns `None` for unmapped languages, in which
+/// `en`→UK, `pt`→Portugal). Returns `None` for unmapped languages, in which
 /// case the caller falls back to a text badge.
 pub fn flag_country_for_lang(code: &str) -> Option<&'static str> {
     // Normalize "pt-BR" / "zh_Hans" → "pt" / "zh".
@@ -181,7 +181,7 @@ pub fn flag_country_for_lang(code: &str) -> Option<&'static str> {
         .unwrap_or(code)
         .to_ascii_lowercase();
     let cc = match base.as_str() {
-        "en" => "us",
+        "en" => "gb",
         "ja" => "jp",
         "ko" => "kr",
         "zh" => "cn",
@@ -342,6 +342,7 @@ mod tests {
     #[test]
     fn flag_for_lang_maps_and_falls_back() {
         // Known languages resolve to a bundled flag.
+        assert_eq!(flag_country_for_lang("en"), Some("gb")); // English → Union Jack
         assert!(flag_for_lang("en").is_some());
         assert!(flag_for_lang("ja").is_some());
         // Region suffixes are stripped before mapping.
