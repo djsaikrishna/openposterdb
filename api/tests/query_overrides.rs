@@ -533,3 +533,16 @@ async fn invalid_lang_exclude_rejected() {
     let api_key = create_api_key(&app).await;
     assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?lang_exclude=english")).await;
 }
+
+#[tokio::test]
+async fn episode_accepts_but_ignores_overlay_params() {
+    // Episodes never render the quality/language overlay badges, but the shared
+    // query params must still be accepted (ignored), not rejected.
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+    assert_not_bad_request(
+        &app,
+        format!("/{api_key}/imdb/episode-default/episode-tt0903747-S1E1.jpg?quality=4k,dv&quality_style=logo&lang_icon=flag&quality_position=tl"),
+    )
+    .await;
+}

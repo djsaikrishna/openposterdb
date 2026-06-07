@@ -816,10 +816,11 @@ pub async fn generate_backdrop(
 
 /// Episode still rendering with configurable position, direction, and optional blur.
 /// Reuses the poster badge overlay functions but with episode-specific settings.
+// NOTE: episodes intentionally do NOT render the quality/language overlay
+// badges (only posters, backdrops, and logos do), so this takes no OverlaySpec.
 pub fn render_episode_sync(
     image_bytes: &[u8],
     badges: &[RatingBadge],
-    overlay: &OverlaySpec,
     font: &FontArc,
     quality: u8,
     position: BadgePosition,
@@ -881,23 +882,7 @@ pub fn render_episode_sync(
         }
     }
 
-    // Quality and language overlay groups, each at its own independent anchor.
-    // Quality has its own layout direction; auto (Default) resolves from its own
-    // anchor (column at corners/sides, row at top/bottom-center).
-    let quality_dir = overlay.quality_direction.resolve(overlay.quality_position);
-    for (group, gpos, gdir) in [
-        (&overlay.quality, overlay.quality_position, quality_dir),
-        (&overlay.language, overlay.language_position, badge_direction),
-    ] {
-        if !group.is_empty() {
-            let imgs = render_overlay_images(group, font, badge_style.is_vertical(), badge_appearance, badge_scale);
-            if gdir.is_vertical() {
-                overlay_vertical_stack(&mut canvas, &imgs, gpos, badge_scale, BADGE_SIDE_MARGIN, 0, 0);
-            } else {
-                overlay_horizontal_rows(&mut canvas, &imgs, gpos, max_per_row, badge_scale, BADGE_SIDE_MARGIN, 0, 0);
-            }
-        }
-    }
+    // Episodes deliberately omit the quality/language overlay badges.
 
     // Encode as JPEG
     let dynamic = DynamicImage::ImageRgba8(canvas);
@@ -1198,7 +1183,7 @@ mod tests {
     fn render_episode_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(780, 439);
-        let result = render_episode_sync(&png, &[], &OverlaySpec::default(), &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        let result = render_episode_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1214,7 +1199,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let result = render_episode_sync(&png, &badges, &OverlaySpec::default(), &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        let result = render_episode_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1229,7 +1214,7 @@ mod tests {
         let badges = vec![
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
         ];
-        let result = render_episode_sync(&png, &badges, &OverlaySpec::default(), &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, true).unwrap();
+        let result = render_episode_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, true).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1239,7 +1224,7 @@ mod tests {
     fn render_episode_downscales_wide_image() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(1920, 1080);
-        let result = render_episode_sync(&png, &[], &OverlaySpec::default(), &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        let result = render_episode_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1248,7 +1233,7 @@ mod tests {
     #[test]
     fn render_episode_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_episode_sync(b"not an image", &[], &OverlaySpec::default(), &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false);
+        let result = render_episode_sync(b"not an image", &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false);
         assert!(result.is_err());
     }
 

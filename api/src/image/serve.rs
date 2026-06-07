@@ -367,7 +367,9 @@ pub fn settings_cache_suffix_with_ratings(
             let shp = badge_shape_cache_suffix(settings.episode_badge_shape.as_str());
             let bgd = badge_background_cache_suffix(settings.episode_badge_background.as_str());
             let blur = if settings.episode_blur { ".blur" } else { "" };
-            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{blur}{ql}{is_suffix}")
+            // Episodes don't render the quality/language overlay, so the `ql`
+            // token is intentionally omitted here.
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{shp}{bgd}{blur}{is_suffix}")
         }
     }
 }
@@ -1337,12 +1339,12 @@ async fn generate_episode(
     let episode_badge_size = settings.episode_badge_size;
     let blur = settings.episode_blur;
     let render_semaphore = state.render_semaphore.clone();
-    let overlay = build_overlay_badges(settings, resolved);
 
     let _permit = render_semaphore.acquire().await
         .map_err(|_| AppError::Other("render queue closed".into()))?;
+    // Episodes do not render the quality/language overlay badges.
     let rendered = tokio::task::spawn_blocking(move || {
-        generate::render_episode_sync(&image_bytes, &badges, &overlay, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, episode_badge_size, blur)
+        generate::render_episode_sync(&image_bytes, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, episode_badge_size, blur)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;

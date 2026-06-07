@@ -427,7 +427,7 @@ pub async fn preview_episode(
     let quality = state.config.image_quality;
 
     let buf = tokio::task::spawn_blocking(move || {
-        generate::render_episode_sync(episode_png, &badges, &generate::OverlaySpec::default(), &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, blur)
+        generate::render_episode_sync(episode_png, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, blur)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
