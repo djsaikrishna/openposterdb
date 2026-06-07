@@ -399,7 +399,15 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "duplicate column",
     ),
     (
-        "ALTER TABLE api_key_settings ADD COLUMN lang_icon TEXT NOT NULL DEFAULT 'off'",
+        "ALTER TABLE api_key_settings ADD COLUMN poster_lang_icon TEXT NOT NULL DEFAULT 'off'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN logo_lang_icon TEXT NOT NULL DEFAULT 'off'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_lang_icon TEXT NOT NULL DEFAULT 'off'",
         "duplicate column",
     ),
     (

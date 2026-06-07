@@ -1152,8 +1152,14 @@ pub fn overlay_cache_suffix(settings: &RenderSettings, kind: crate::cache::Image
             }
         }
     }
-    if !settings.lang_icon.is_off() {
-        out.push_str(settings.lang_icon.cache_suffix());
+    // The language badge is configurable per image type.
+    let lang_icon = match kind {
+        ImageType::Logo => settings.logo_lang_icon,
+        ImageType::Backdrop => settings.backdrop_lang_icon,
+        ImageType::Poster | ImageType::Episode => settings.poster_lang_icon,
+    };
+    if !lang_icon.is_off() {
+        out.push_str(lang_icon.cache_suffix());
         // Canonicalize the override before encoding so equivalent forms
         // (`pt-BR`/`PT-BR`/`pt-br`/`pt`, or the `cn`→`zh` alias) — which all
         // render the identical badge — share one cache entry. A code that
@@ -1480,7 +1486,8 @@ mod tests {
         let mut s = RenderSettings::default();
         s.quality = Arc::from("4k,dv");
         s.quality_style = QualityStyle::Logo;
-        s.lang_icon = LangIcon::Flag;
+        s.poster_lang_icon = LangIcon::Flag;
+        s.backdrop_lang_icon = LangIcon::Flag;
         let suffix = overlay_cache_suffix(&s, ImageType::Poster);
         assert!(suffix.contains(".ql4v"), "quality token missing: {suffix}");
         assert!(suffix.contains(".lif"), "lang token missing: {suffix}");
@@ -1519,7 +1526,7 @@ mod tests {
         // Text style + text lang produce distinct tokens.
         let mut s3 = RenderSettings::default();
         s3.quality = Arc::from("4k");
-        s3.lang_icon = LangIcon::Text;
+        s3.poster_lang_icon = LangIcon::Text;
         assert!(overlay_cache_suffix(&s3, ImageType::Poster).contains(".qt4"));
         assert!(overlay_cache_suffix(&s3, ImageType::Poster).contains(".lit"));
     }
@@ -1530,7 +1537,7 @@ mod tests {
         let mut s = RenderSettings::default();
         s.quality = Arc::from("4k");
         s.quality_style = QualityStyle::Logo;
-        s.lang_icon = LangIcon::Flag;
+        s.logo_lang_icon = LangIcon::Flag;
         s.lang_exclude = Arc::from("en");
         // The discriminating tokens that still affect the logo render are kept.
         let logo = overlay_cache_suffix(&s, ImageType::Logo);
@@ -1602,7 +1609,7 @@ mod tests {
     fn overlay_cache_suffix_encodes_lang_exclude() {
         use crate::cache::ImageType;
         let mut s = RenderSettings::default();
-        s.lang_icon = LangIcon::Flag;
+        s.poster_lang_icon = LangIcon::Flag;
         // No exclude → no .lx token.
         assert!(!overlay_cache_suffix(&s, ImageType::Poster).contains(".lx"));
         // Exclude is normalized (base, lowercased, sorted, deduped, '_'-joined).
@@ -2577,7 +2584,9 @@ pub struct UpsertApiKeySettings<'a> {
     pub backdrop_edge_inset_x: i32,
     pub backdrop_edge_inset_y: i32,
     pub quality_style: &'a str,
-    pub lang_icon: &'a str,
+    pub poster_lang_icon: &'a str,
+    pub logo_lang_icon: &'a str,
+    pub backdrop_lang_icon: &'a str,
     pub lang_exclude: &'a str,
     pub poster_quality_position: &'a str,
     pub backdrop_quality_position: &'a str,
@@ -2633,7 +2642,9 @@ pub async fn upsert_api_key_settings(
         backdrop_edge_inset_x: Set(params.backdrop_edge_inset_x),
         backdrop_edge_inset_y: Set(params.backdrop_edge_inset_y),
         quality_style: Set(params.quality_style.to_string()),
-        lang_icon: Set(params.lang_icon.to_string()),
+        poster_lang_icon: Set(params.poster_lang_icon.to_string()),
+        logo_lang_icon: Set(params.logo_lang_icon.to_string()),
+        backdrop_lang_icon: Set(params.backdrop_lang_icon.to_string()),
         lang_exclude: Set(params.lang_exclude.to_string()),
         poster_quality_position: Set(params.poster_quality_position.to_string()),
         backdrop_quality_position: Set(params.backdrop_quality_position.to_string()),
@@ -2686,7 +2697,9 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::BackdropEdgeInsetX,
                     api_key_settings::Column::BackdropEdgeInsetY,
                     api_key_settings::Column::QualityStyle,
-                    api_key_settings::Column::LangIcon,
+                    api_key_settings::Column::PosterLangIcon,
+                    api_key_settings::Column::LogoLangIcon,
+                    api_key_settings::Column::BackdropLangIcon,
                     api_key_settings::Column::LangExclude,
                     api_key_settings::Column::PosterQualityPosition,
                     api_key_settings::Column::BackdropQualityPosition,
@@ -2771,8 +2784,13 @@ pub struct RenderSettings {
     pub quality: Arc<str>,
     /// How the quality badge renders (text chip vs brand logo). Persisted.
     pub quality_style: QualityStyle,
-    /// Whether/how the main-language badge renders (off/flag/text). Persisted.
-    pub lang_icon: LangIcon,
+    /// Whether/how the main-language badge renders on posters (off/flag/text).
+    /// Persisted. Default off.
+    pub poster_lang_icon: LangIcon,
+    /// Main-language badge on logos (off/flag/text). Persisted. Default off.
+    pub logo_lang_icon: LangIcon,
+    /// Main-language badge on backdrops (off/flag/text). Persisted. Default off.
+    pub backdrop_lang_icon: LangIcon,
     /// Comma-separated languages to *exclude* from the language badge (e.g.
     /// `"en"` to hide it on English titles). Empty = show for all. Persisted.
     pub lang_exclude: Arc<str>,
@@ -2862,7 +2880,9 @@ impl Default for RenderSettings {
             episode_badge_background: default_badge_background(),
             quality: Arc::from(""),
             quality_style: default_quality_style(),
-            lang_icon: default_lang_icon(),
+            poster_lang_icon: default_lang_icon(),
+            logo_lang_icon: default_lang_icon(),
+            backdrop_lang_icon: default_lang_icon(),
             lang_exclude: Arc::from(""),
             lang_code: None,
             poster_quality_position: default_poster_quality_position(),
@@ -2962,7 +2982,9 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         // global default.
         quality: Arc::from(""),
         quality_style: global_or(globals, "quality_style", QualityStyle::parse, defaults.quality_style),
-        lang_icon: global_or(globals, "lang_icon", LangIcon::parse, defaults.lang_icon),
+        poster_lang_icon: global_or(globals, "poster_lang_icon", LangIcon::parse, defaults.poster_lang_icon),
+        logo_lang_icon: global_or(globals, "logo_lang_icon", LangIcon::parse, defaults.logo_lang_icon),
+        backdrop_lang_icon: global_or(globals, "backdrop_lang_icon", LangIcon::parse, defaults.backdrop_lang_icon),
         lang_exclude: arc_or("lang_exclude", defaults.lang_exclude),
         lang_code: None,
         poster_quality_position: global_or(globals, "poster_quality_position", BadgePosition::parse, defaults.poster_quality_position),
@@ -3025,7 +3047,9 @@ pub async fn get_effective_render_settings(
                 episode_badge_background: parse_setting_or_default(&s.episode_badge_background, "episode_badge_background", BadgeBackground::parse, default_badge_background()),
                 quality: Arc::from(""),
                 quality_style: parse_setting_or_default(&s.quality_style, "quality_style", QualityStyle::parse, default_quality_style()),
-                lang_icon: parse_setting_or_default(&s.lang_icon, "lang_icon", LangIcon::parse, default_lang_icon()),
+                poster_lang_icon: parse_setting_or_default(&s.poster_lang_icon, "poster_lang_icon", LangIcon::parse, default_lang_icon()),
+                logo_lang_icon: parse_setting_or_default(&s.logo_lang_icon, "logo_lang_icon", LangIcon::parse, default_lang_icon()),
+                backdrop_lang_icon: parse_setting_or_default(&s.backdrop_lang_icon, "backdrop_lang_icon", LangIcon::parse, default_lang_icon()),
                 lang_exclude: Arc::from(s.lang_exclude.as_str()),
                 lang_code: None,
                 poster_quality_position: parse_setting_or_default(&s.poster_quality_position, "poster_quality_position", BadgePosition::parse, default_poster_quality_position()),

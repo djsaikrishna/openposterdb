@@ -51,8 +51,12 @@ pub struct Model {
     pub backdrop_edge_inset_y: i32,
     /// How the quality overlay badge renders: `text` or `logo`.
     pub quality_style: String,
-    /// Whether/how the main-language overlay badge renders: `off`, `flag`, `text`.
-    pub lang_icon: String,
+    /// Whether/how the main-language overlay badge renders on posters: `off`, `flag`, `text`.
+    pub poster_lang_icon: String,
+    /// Main-language overlay badge on logos: `off`, `flag`, `text`.
+    pub logo_lang_icon: String,
+    /// Main-language overlay badge on backdrops: `off`, `flag`, `text`.
+    pub backdrop_lang_icon: String,
     /// Comma-separated languages to exclude from the language badge (e.g. `en`).
     pub lang_exclude: String,
     /// Poster anchor for the quality overlay badge (e.g. `tr`).

@@ -78,15 +78,28 @@ const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 // `ratings_order` override — the server's order once loaded, else the frontend default.
 const baselineOrder = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 const blur = ref('default')
-// Quality + main-language overlay badges. These are global (not per image type),
-// like `lang`/`image_source`. The selected quality tiers and the language-code
-// override are per-request only (no persisted setting), so they have no server
-// default to reflect; `quality_style`/`lang_icon` use the 'default' sentinel and
-// fall back to the server's persisted defaults.
+// Quality + main-language overlay badges. Quality style/direction are global (not
+// per image type), like `lang`/`image_source`. The selected quality tiers and the
+// language-code override are per-request only (no persisted setting), so they have
+// no server default to reflect; `quality_style` uses the 'default' sentinel and
+// falls back to the server's persisted default.
 const qualityTiers = ref<string[]>([])
 const qualityStyle = ref('default')
 const qualityDirection = ref('default')
-const langIcon = ref('default')
+// The main-language icon is per-image-type (poster/logo/backdrop) on the server,
+// so we keep a value per type and show/emit only the one for the currently-selected
+// image type — mirroring the per-type position controls. Episodes never render the
+// language badge, so the control is hidden (and no param emitted) for episode. Each
+// uses the 'default' sentinel and falls back to that type's persisted server default.
+const langIconByType = ref<Record<'poster' | 'logo' | 'backdrop', string>>({ poster: 'default', logo: 'default', backdrop: 'default' })
+// The image types that actually render the language badge (everything but episode).
+const langIconType = computed<'poster' | 'logo' | 'backdrop' | null>(() =>
+  imageType.value === 'episode' ? null : imageType.value,
+)
+const langIcon = computed({
+  get: () => (langIconType.value ? langIconByType.value[langIconType.value] : 'default'),
+  set: (v: string) => { if (langIconType.value) langIconByType.value[langIconType.value] = v },
+})
 const langCode = ref('')
 const langExclude = ref('')
 // Anchor positions for the quality / main-language overlay badges. These are
@@ -233,7 +246,19 @@ const blurDefaultLabel = computed(() =>
 )
 const qualityStyleDefaultLabel = computed(() => annotate('Quality style', defaults.value?.quality_style, QUALITY_STYLE_LABELS))
 const qualityDirectionDefaultLabel = computed(() => annotate('Quality direction', defaults.value?.quality_direction, BADGE_DIRECTION_LABELS))
-const langIconDefaultLabel = computed(() => annotate('Language icon', defaults.value?.lang_icon, LANG_ICON_LABELS))
+// The language icon is per image type, so the "default (resolved)" label reflects
+// the selected type's matching server default field (and stays plain for episode,
+// which has no language badge).
+const langIconServerDefault = computed(() => {
+  const d = defaults.value
+  if (!d || !langIconType.value) return null
+  switch (langIconType.value) {
+    case 'logo': return d.logo_lang_icon
+    case 'backdrop': return d.backdrop_lang_icon
+    default: return d.poster_lang_icon
+  }
+})
+const langIconDefaultLabel = computed(() => annotate('Language icon', langIconServerDefault.value, LANG_ICON_LABELS))
 // Overlay anchor positions are per image type, so the "default (resolved)" label
 // reflects the selected type's matching server default field.
 const qualityPositionServerDefault = computed(() => {
@@ -332,12 +357,17 @@ const queryString = computed(() => {
     if (ey !== null) params.set('edge_inset_y', ey)
   }
   if (imageType.value === 'episode' && blur.value !== 'default') params.set('blur', blur.value)
-  // Overlay badges (global, every image type). Quality tiers are stackable and
-  // sent only when at least one is selected. `quality_style`/`lang_icon` are
-  // emitted only when the user overrides the server default. `lang_code` is an
-  // ISO 639-1 override that's meaningful only when a language icon is shown.
+  // Overlay badges. Quality tiers/style/direction are global; the language icon is
+  // per image type. Quality tiers are stackable and sent only when at least one is
+  // selected. `quality_style` is emitted only when the user overrides the server
+  // default. `lang_icon` resolves to the selected type's value (and to 'default' for
+  // episode, which has no language badge), so the single `?lang_icon=` maps to the
+  // selected type and is emitted only when that type is overridden. `lang_code` is
+  // an ISO 639-1 override that's meaningful only when a language icon is active.
   if (qualityTiers.value.length) params.set('quality', qualityTiers.value.join(','))
   if (qualityStyle.value !== 'default') params.set('quality_style', qualityStyle.value)
+  // Active reflects the CURRENT image type's language icon (flag/text). Episode
+  // resolves to 'default', so its language-dependent params are never emitted.
   const langIconActive = langIcon.value === 'flag' || langIcon.value === 'text'
   if (langIcon.value !== 'default') params.set('lang_icon', langIcon.value)
   const langCodeVal = langCode.value.trim()
@@ -544,15 +574,17 @@ async function handleFetch() {
               <SelectItem value="v">Vertical</SelectItem>
             </SelectContent>
           </Select>
-          <Select v-model="langIcon">
+          <!-- The main-language icon is per image type (poster/logo/backdrop);
+               episodes never render the language badge, so it's hidden for them.
+               The v-model resolves to the selected type's value, so this single
+               control feeds the right per-type `lang_icon` for the chosen type. -->
+          <Select v-if="langIconType" v-model="langIcon">
             <SelectTrigger id="free-lang-icon" aria-label="Main-language icon" class="bg-background">
               <SelectValue placeholder="Language icon: default" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="default" :key="langIconDefaultLabel">{{ langIconDefaultLabel }}</SelectItem>
-              <SelectItem value="off">Off</SelectItem>
-              <SelectItem value="flag">Flag</SelectItem>
-              <SelectItem value="text">Text</SelectItem>
+              <SelectItem v-for="(label, value) in LANG_ICON_LABELS" :key="value" :value="value">{{ label }}</SelectItem>
             </SelectContent>
           </Select>
           <!-- Overlay anchor positions are per image type (poster vs backdrop);

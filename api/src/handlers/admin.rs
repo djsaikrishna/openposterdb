@@ -154,7 +154,9 @@ pub struct GlobalSettingsResponse {
     pub backdrop_badge_background: BadgeBackground,
     pub episode_badge_background: BadgeBackground,
     pub quality_style: QualityStyle,
-    pub lang_icon: LangIcon,
+    pub poster_lang_icon: LangIcon,
+    pub logo_lang_icon: LangIcon,
+    pub backdrop_lang_icon: LangIcon,
     pub lang_exclude: String,
     pub poster_quality_position: BadgePosition,
     pub backdrop_quality_position: BadgePosition,
@@ -222,7 +224,9 @@ pub async fn get_settings(
         backdrop_badge_background: settings.backdrop_badge_background,
         episode_badge_background: settings.episode_badge_background,
         quality_style: settings.quality_style,
-        lang_icon: settings.lang_icon,
+        poster_lang_icon: settings.poster_lang_icon,
+        logo_lang_icon: settings.logo_lang_icon,
+        backdrop_lang_icon: settings.backdrop_lang_icon,
         lang_exclude: settings.lang_exclude.to_string(),
         poster_quality_position: settings.poster_quality_position,
         backdrop_quality_position: settings.backdrop_quality_position,
@@ -318,7 +322,11 @@ pub struct UpdateGlobalSettingsRequest {
     #[serde(default = "db::default_quality_style")]
     pub quality_style: QualityStyle,
     #[serde(default = "db::default_lang_icon")]
-    pub lang_icon: LangIcon,
+    pub poster_lang_icon: LangIcon,
+    #[serde(default = "db::default_lang_icon")]
+    pub logo_lang_icon: LangIcon,
+    #[serde(default = "db::default_lang_icon")]
+    pub backdrop_lang_icon: LangIcon,
     #[serde(default = "db::default_lang_exclude")]
     pub lang_exclude: String,
     #[serde(default = "db::default_poster_quality_position")]
@@ -390,7 +398,9 @@ pub async fn update_settings(
         ("backdrop_badge_background", req.backdrop_badge_background.as_str()),
         ("episode_badge_background", req.episode_badge_background.as_str()),
         ("quality_style", req.quality_style.as_str()),
-        ("lang_icon", req.lang_icon.as_str()),
+        ("poster_lang_icon", req.poster_lang_icon.as_str()),
+        ("logo_lang_icon", req.logo_lang_icon.as_str()),
+        ("backdrop_lang_icon", req.backdrop_lang_icon.as_str()),
         ("lang_exclude", req.lang_exclude.as_str()),
         ("poster_quality_position", req.poster_quality_position.as_str()),
         ("backdrop_quality_position", req.backdrop_quality_position.as_str()),

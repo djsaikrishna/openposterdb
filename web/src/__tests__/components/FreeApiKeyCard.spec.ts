@@ -49,7 +49,9 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     episode_blur: false,
     quality_style: 'text',
     quality_direction: 'd',
-    lang_icon: 'off',
+    poster_lang_icon: 'off',
+    logo_lang_icon: 'off',
+    backdrop_lang_icon: 'off',
     lang_exclude: '',
     poster_quality_position: 'tr',
     backdrop_quality_position: 'tl',
@@ -673,24 +675,74 @@ describe('FreeApiKeyCard', () => {
     expect(findCurlCode(wrapper).text()).toContain('lang_exclude=en%2Ces')
   })
 
-  it('quality and language badges persist across image-type switches (global controls)', async () => {
+  it('quality tiers persist across image-type switches (global control)', async () => {
     const wrapper = mountCard(true)
     await wrapper.find('#free-quality-4k').trigger('click')
-    await setSelectById(wrapper, 'free-lang-icon', 'flag')
     await flushPromises()
     expect(findCurlCode(wrapper).text()).toContain('quality=4k')
-    expect(findCurlCode(wrapper).text()).toContain('lang_icon=flag')
 
     await setSelectById(wrapper, 'free-image-type', 'logo')
     expect(findCurlCode(wrapper).text()).toContain('quality=4k')
+  })
+
+  it('remembers the language icon per image type', async () => {
+    const wrapper = mountCard(true)
+
+    // Poster value.
+    await setSelectById(wrapper, 'free-lang-icon', 'flag')
+    expect(findCurlCode(wrapper).text()).toContain('lang_icon=flag')
+
+    // Switch to logo — the poster override no longer applies; set a distinct logo
+    // value and confirm it's the one emitted for logo.
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(findCurlCode(wrapper).text()).not.toContain('lang_icon=flag')
+    await setSelectById(wrapper, 'free-lang-icon', 'text')
+    expect(findCurlCode(wrapper).text()).toContain('lang_icon=text')
+
+    // Switch back to poster — the poster value is remembered per type.
+    await setSelectById(wrapper, 'free-image-type', 'poster')
     expect(findCurlCode(wrapper).text()).toContain('lang_icon=flag')
   })
 
-  it('annotates quality_style and lang_icon defaults with the server values', () => {
-    const wrapper = mountCard(true, makeDefaults({ quality_style: 'logo', lang_icon: 'flag' }))
-    const text = wrapper.text()
+  it('hides the lang-icon select for episode and never emits lang_icon there', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+    expect(wrapper.find('#free-lang-icon').exists()).toBe(false)
+    expect(findCurlCode(wrapper).text()).not.toContain('lang_icon=')
+  })
+
+  it('renders the lang-icon select for poster, logo, and backdrop', async () => {
+    const wrapper = mountCard(true)
+    expect(wrapper.find('#free-lang-icon').exists()).toBe(true)
+
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(wrapper.find('#free-lang-icon').exists()).toBe(true)
+
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    expect(wrapper.find('#free-lang-icon').exists()).toBe(true)
+  })
+
+  it('annotates quality_style and the per-type lang_icon default with the server values', async () => {
+    const wrapper = mountCard(true, makeDefaults({
+      quality_style: 'logo',
+      poster_lang_icon: 'flag',
+      logo_lang_icon: 'text',
+      backdrop_lang_icon: 'off',
+    }))
+    // Default type is poster — labels reflect the poster server defaults.
+    let text = wrapper.text()
     expect(text).toContain('Quality style: default (Logo)')
     expect(text).toContain('Language icon: default (Flag)')
+
+    // Switching to logo reflects the logo server default.
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    text = wrapper.text()
+    expect(text).toContain('Language icon: default (Text)')
+
+    // And backdrop reflects the backdrop server default.
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    text = wrapper.text()
+    expect(text).toContain('Language icon: default (Off)')
   })
 
   it('renders the quality-position and lang-position selects for poster', () => {

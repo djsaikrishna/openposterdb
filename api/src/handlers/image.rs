@@ -274,7 +274,9 @@ pub struct FreeKeySettingsResponse {
     pub backdrop_badge_background: BadgeBackground,
     pub episode_badge_background: BadgeBackground,
     pub quality_style: QualityStyle,
-    pub lang_icon: LangIcon,
+    pub poster_lang_icon: LangIcon,
+    pub logo_lang_icon: LangIcon,
+    pub backdrop_lang_icon: LangIcon,
     pub poster_quality_position: BadgePosition,
     pub backdrop_quality_position: BadgePosition,
     pub poster_lang_position: BadgePosition,
@@ -327,7 +329,9 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             backdrop_badge_background: s.backdrop_badge_background,
             episode_badge_background: s.episode_badge_background,
             quality_style: s.quality_style,
-            lang_icon: s.lang_icon,
+            poster_lang_icon: s.poster_lang_icon,
+            logo_lang_icon: s.logo_lang_icon,
+            backdrop_lang_icon: s.backdrop_lang_icon,
             poster_quality_position: s.poster_quality_position,
             backdrop_quality_position: s.backdrop_quality_position,
             poster_lang_position: s.poster_lang_position,
@@ -572,8 +576,15 @@ fn apply_query_overrides(
     if let Some(style) = query.quality_style {
         s.quality_style = style;
     }
+    // The language badge is configurable per image type; logos/episodes that
+    // support it map to their own field, episodes ignore it.
     if let Some(icon) = query.lang_icon {
-        s.lang_icon = icon;
+        match kind {
+            cache::ImageType::Poster => s.poster_lang_icon = icon,
+            cache::ImageType::Logo => s.logo_lang_icon = icon,
+            cache::ImageType::Backdrop => s.backdrop_lang_icon = icon,
+            cache::ImageType::Episode => {}
+        }
     }
     if let Some(ref code) = query.lang_code {
         db::validate_lang_code(code).map_err(|e| e.into_response())?;

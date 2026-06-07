@@ -180,9 +180,15 @@ fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId, ki
     }
 
     // Main-language badge — explicit override, else the title's original_language.
-    // Skipped entirely when the resolved language is in the exclude list (e.g.
-    // hide the badge on titles in a language the user already understands).
-    if !settings.lang_icon.is_off() {
+    // The badge is configurable per image type; skipped entirely when the
+    // resolved language is in the exclude list (e.g. hide the badge on titles in
+    // a language the user already understands).
+    let lang_icon = match kind {
+        cache::ImageType::Logo => settings.logo_lang_icon,
+        cache::ImageType::Backdrop => settings.backdrop_lang_icon,
+        _ => settings.poster_lang_icon,
+    };
+    if !lang_icon.is_off() {
         // Canonicalize the effective language (override or resolved) so the flag
         // lookup, exclusion, and text label all agree — maps TMDB aliases like
         // `cn`→`zh` and drops "no language" sentinels (`xx`/`und`/…).
@@ -193,7 +199,7 @@ fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId, ki
             .and_then(|c| db::canonical_lang(c))
             .filter(|c| !db::lang_is_excluded(&settings.lang_exclude, c));
         if let Some(code) = code {
-            match settings.lang_icon {
+            match lang_icon {
                 LangIcon::Flag => match icons::flag_for_lang(&code) {
                     Some(img) => language.push(OverlayBadge::Flag(img)),
                     None => language.push(OverlayBadge::Text(lang_code_label(&code))),
@@ -301,7 +307,9 @@ pub fn settings_cache_suffix_with_ratings(
         episode_badge_background: _,
         quality: _,         // folded into `ql` via overlay_cache_suffix
         quality_style: _,   // folded into `ql`
-        lang_icon: _,       // folded into `ql`
+        poster_lang_icon: _, // folded into `ql`
+        logo_lang_icon: _,   // folded into `ql`
+        backdrop_lang_icon: _,// folded into `ql`
         lang_exclude: _,    // folded into `ql`
         lang_code: _,       // folded into `ql`
         poster_quality_position: _,  // folded into `ql`
