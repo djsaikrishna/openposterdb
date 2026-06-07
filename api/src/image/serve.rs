@@ -149,24 +149,26 @@ fn lang_code_label(code: &str) -> String {
 }
 
 /// Build the non-rating overlay badges (quality #1, main-language #6) for a
-/// resolved title from the effective render settings. Returns an empty vec when
-/// neither feature is active. Called after `apply_rating_preferences` so these
-/// badges bypass ratings ordering/exclusion/limit.
-fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId) -> Vec<crate::image::badge::OverlayBadge> {
+/// resolved title from the effective render settings, as two independently
+/// positioned groups. Each group is empty when its feature is inactive. Called
+/// after `apply_rating_preferences` so these badges bypass ratings
+/// ordering/exclusion/limit.
+fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId) -> generate::OverlaySpec {
     use crate::image::badge::OverlayBadge;
     use crate::image::icons;
     use crate::services::db::{self, LangIcon, QualityStyle};
 
-    let mut out: Vec<OverlayBadge> = Vec::new();
+    let mut quality: Vec<OverlayBadge> = Vec::new();
+    let mut language: Vec<OverlayBadge> = Vec::new();
 
     // Quality tiers — caller-supplied, stackable, rendered as text or logo.
     for tier in db::parse_quality_tiers(&settings.quality) {
         match settings.quality_style {
             QualityStyle::Logo => match icons::quality_logo_for(tier) {
-                Some(img) => out.push(OverlayBadge::Logo(img)),
-                None => out.push(OverlayBadge::Text(tier.label().to_string())),
+                Some(img) => quality.push(OverlayBadge::Logo(img)),
+                None => quality.push(OverlayBadge::Text(tier.label().to_string())),
             },
-            QualityStyle::Text => out.push(OverlayBadge::Text(tier.label().to_string())),
+            QualityStyle::Text => quality.push(OverlayBadge::Text(tier.label().to_string())),
         }
     }
 
@@ -180,16 +182,21 @@ fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId) ->
         if let Some(code) = code {
             match settings.lang_icon {
                 LangIcon::Flag => match icons::flag_for_lang(code) {
-                    Some(img) => out.push(OverlayBadge::Flag(img)),
-                    None => out.push(OverlayBadge::Text(lang_code_label(code))),
+                    Some(img) => language.push(OverlayBadge::Flag(img)),
+                    None => language.push(OverlayBadge::Text(lang_code_label(code))),
                 },
-                LangIcon::Text => out.push(OverlayBadge::Text(lang_code_label(code))),
+                LangIcon::Text => language.push(OverlayBadge::Text(lang_code_label(code))),
                 LangIcon::Off => {}
             }
         }
     }
 
-    out
+    generate::OverlaySpec {
+        quality,
+        quality_position: settings.quality_position,
+        language,
+        language_position: settings.lang_position,
+    }
 }
 
 /// Resolve an optional image size, defaulting to Medium.
@@ -282,6 +289,8 @@ pub fn settings_cache_suffix_with_ratings(
         quality_style: _,   // folded into `ql`
         lang_icon: _,       // folded into `ql`
         lang_code: _,       // folded into `ql`
+        quality_position: _,// folded into `ql`
+        lang_position: _,   // folded into `ql`
     } = settings;
 
     let resolved_size = resolve_image_size(image_size);
@@ -1253,10 +1262,10 @@ fn trigger_logo_backdrop_refresh(
                 resolved_size.badge_scale(cache::ImageType::Backdrop) * badge_size_factor,
             ),
         };
-        let overlay_badges = build_overlay_badges(&settings, &resolved);
+        let overlay = build_overlay_badges(&settings, &resolved);
         let bytes = match lb_kind {
-            LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, overlay_badges, state2.font.clone(), params.badge_style, params.label_style, params.appearance, state2.render_semaphore.clone(), target_width, badge_scale).await?,
-            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, overlay_badges, state2.font.clone(), state2.config.image_quality, params.position, params.badge_style, params.label_style, params.appearance, params.badge_direction, state2.render_semaphore.clone(), target_width, badge_scale, params.badge_size, params.edge_inset_x, params.edge_inset_y).await?,
+            LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, overlay, state2.font.clone(), params.badge_style, params.label_style, params.appearance, state2.render_semaphore.clone(), target_width, badge_scale).await?,
+            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, overlay, state2.font.clone(), state2.config.image_quality, params.position, params.badge_style, params.label_style, params.appearance, params.badge_direction, state2.render_semaphore.clone(), target_width, badge_scale, params.badge_size, params.edge_inset_x, params.edge_inset_y).await?,
         };
 
         Ok((bytes, cross_ids.release_date.clone(), image_type, cross_ids))
@@ -1314,12 +1323,12 @@ async fn generate_episode(
     let episode_badge_size = settings.episode_badge_size;
     let blur = settings.episode_blur;
     let render_semaphore = state.render_semaphore.clone();
-    let overlay_badges = build_overlay_badges(settings, resolved);
+    let overlay = build_overlay_badges(settings, resolved);
 
     let _permit = render_semaphore.acquire().await
         .map_err(|_| AppError::Other("render queue closed".into()))?;
     let rendered = tokio::task::spawn_blocking(move || {
-        generate::render_episode_sync(&image_bytes, &badges, &overlay_badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, episode_badge_size, blur)
+        generate::render_episode_sync(&image_bytes, &badges, &overlay, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, episode_badge_size, blur)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -1442,11 +1451,11 @@ async fn generate_poster_with_source(
     let badge_scale = resolved_size.badge_scale(cache::ImageType::Poster) * settings.poster_badge_size.scale_factor();
     let tmdb_size: Arc<str> = resolved_size.tmdb_size().into();
 
-    let overlay_badges = build_overlay_badges(settings, resolved);
+    let overlay = build_overlay_badges(settings, resolved);
     let bytes = generate::generate_poster(generate::ImageParams {
         poster_path,
         badges: &badges,
-        overlay_badges: &overlay_badges,
+        overlay: &overlay,
         tmdb: &state.tmdb,
         font: &state.font,
         quality: state.config.image_quality,
@@ -2001,7 +2010,7 @@ pub async fn handle_logo_backdrop_inner(
         label: &'static str,
         resolved: id::ResolvedId,
         badges: Vec<ratings::RatingBadge>,
-        overlay_badges: Vec<crate::image::badge::OverlayBadge>,
+        overlay: generate::OverlaySpec,
         cross_ids: CrossIdInfo,
     }
     let ctx = LbGenCtx {
@@ -2024,7 +2033,7 @@ pub async fn handle_logo_backdrop_inner(
         type_edge_inset_y: params.edge_inset_y,
         badge_size_factor: params.badge_size.scale_factor(),
         label,
-        overlay_badges: build_overlay_badges(settings, &resolved),
+        overlay: build_overlay_badges(settings, &resolved),
         resolved: resolved.clone(),
         badges,
         cross_ids: cross_ids.clone(),
@@ -2105,8 +2114,8 @@ pub async fn handle_logo_backdrop_inner(
                 ),
             };
             let bytes = match lb_kind {
-                LogoBackdropKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.overlay_badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
-                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.overlay_badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_position, ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.type_badge_direction, ctx.state.render_semaphore.clone(), target_width, badge_scale, ctx.type_badge_size, ctx.type_edge_inset_x, ctx.type_edge_inset_y).await?,
+                LogoBackdropKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.overlay, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
+                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.overlay, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_position, ctx.type_badge_style, ctx.type_label_style, ctx.type_appearance, ctx.type_badge_direction, ctx.state.render_semaphore.clone(), target_width, badge_scale, ctx.type_badge_size, ctx.type_edge_inset_x, ctx.type_edge_inset_y).await?,
             };
 
             let release_date = ctx.cross_ids.release_date.clone();

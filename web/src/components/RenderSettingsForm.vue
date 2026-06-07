@@ -61,6 +61,8 @@ export interface RenderSettings {
   episode_badge_background: string
   quality_style: string
   lang_icon: string
+  quality_position: string
+  lang_position: string
 }
 
 const props = defineProps<{
@@ -120,6 +122,8 @@ const editBackdropBadgeBackground = ref(props.settings.backdrop_badge_background
 const editEpisodeBadgeBackground = ref(props.settings.episode_badge_background || 'd')
 const editQualityStyle = ref(props.settings.quality_style || 'text')
 const editLangIcon = ref(props.settings.lang_icon || 'off')
+const editQualityPosition = ref(props.settings.quality_position || 'tr')
+const editLangPosition = ref(props.settings.lang_position || 'tl')
 
 // Which edges the current backdrop position anchors to. The horizontal inset
 // only applies to left/right positions and the vertical inset only to top/bottom
@@ -176,6 +180,8 @@ function applySettings(s: RenderSettings) {
   editEpisodeBadgeBackground.value = s.episode_badge_background || 'd'
   editQualityStyle.value = s.quality_style || 'text'
   editLangIcon.value = s.lang_icon || 'off'
+  editQualityPosition.value = s.quality_position || 'tr'
+  editLangPosition.value = s.lang_position || 'tl'
 }
 const currentSettings = ref<RenderSettings>(props.settings)
 const saving = ref(false)
@@ -254,6 +260,8 @@ async function autoSave() {
       episode_badge_background: editEpisodeBadgeBackground.value,
       quality_style: editQualityStyle.value,
       lang_icon: editLangIcon.value,
+      quality_position: editQualityPosition.value,
+      lang_position: editLangPosition.value,
     })
     if (err) {
       error.value = err
@@ -280,7 +288,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground, editQualityStyle, editLangIcon],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground, editQualityStyle, editLangIcon, editQualityPosition, editLangPosition],
   () => {
     if (syncing) return
     autoSave()
@@ -547,6 +555,48 @@ function toggleExclude(key: string, checked: boolean) {
             <SelectItem value="off">Off</SelectItem>
             <SelectItem value="flag">Flag</SelectItem>
             <SelectItem value="text">Text</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-2">
+        <Label :for="inputId('quality-position')">Quality badge position</Label>
+        <Select
+          :model-value="editQualityPosition"
+          @update:model-value="editQualityPosition = $event as string"
+        >
+          <SelectTrigger :id="inputId('quality-position')" class="max-w-xs" data-testid="quality-position-select">
+            <SelectValue placeholder="Select position" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="bc">Bottom Center</SelectItem>
+            <SelectItem value="tc">Top Center</SelectItem>
+            <SelectItem value="l">Left</SelectItem>
+            <SelectItem value="r">Right</SelectItem>
+            <SelectItem value="tl">Top Left</SelectItem>
+            <SelectItem value="tr">Top Right</SelectItem>
+            <SelectItem value="bl">Bottom Left</SelectItem>
+            <SelectItem value="br">Bottom Right</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-2">
+        <Label :for="inputId('lang-position')">Main-language badge position</Label>
+        <Select
+          :model-value="editLangPosition"
+          @update:model-value="editLangPosition = $event as string"
+        >
+          <SelectTrigger :id="inputId('lang-position')" class="max-w-xs" data-testid="lang-position-select">
+            <SelectValue placeholder="Select position" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="bc">Bottom Center</SelectItem>
+            <SelectItem value="tc">Top Center</SelectItem>
+            <SelectItem value="l">Left</SelectItem>
+            <SelectItem value="r">Right</SelectItem>
+            <SelectItem value="tl">Top Left</SelectItem>
+            <SelectItem value="tr">Top Right</SelectItem>
+            <SelectItem value="bl">Bottom Left</SelectItem>
+            <SelectItem value="br">Bottom Right</SelectItem>
           </SelectContent>
         </Select>
       </div>

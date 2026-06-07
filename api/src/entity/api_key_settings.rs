@@ -53,6 +53,10 @@ pub struct Model {
     pub quality_style: String,
     /// Whether/how the main-language overlay badge renders: `off`, `flag`, `text`.
     pub lang_icon: String,
+    /// Anchor position for the quality overlay badge (e.g. `tr`).
+    pub quality_position: String,
+    /// Anchor position for the main-language overlay badge (e.g. `tl`).
+    pub lang_position: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

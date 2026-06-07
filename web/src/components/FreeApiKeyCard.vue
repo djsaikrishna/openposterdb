@@ -87,6 +87,11 @@ const qualityTiers = ref<string[]>([])
 const qualityStyle = ref('default')
 const langIcon = ref('default')
 const langCode = ref('')
+// Anchor positions for the quality / main-language overlay badges. Like
+// `quality_style`/`lang_icon` these are persisted globals, so they use the
+// 'default' sentinel and fall back to the server's persisted defaults.
+const qualityPosition = ref('default')
+const langPosition = ref('default')
 function isQualityTier(key: string): boolean {
   return qualityTiers.value.includes(key)
 }
@@ -211,6 +216,8 @@ const blurDefaultLabel = computed(() =>
 )
 const qualityStyleDefaultLabel = computed(() => annotate('Quality style', defaults.value?.quality_style, QUALITY_STYLE_LABELS))
 const langIconDefaultLabel = computed(() => annotate('Language icon', defaults.value?.lang_icon, LANG_ICON_LABELS))
+const qualityPositionDefaultLabel = computed(() => annotate('Quality position', defaults.value?.quality_position, POSITION_LABELS))
+const langPositionDefaultLabel = computed(() => annotate('Language position', defaults.value?.lang_position, POSITION_LABELS))
 
 // Switching image type re-applies that type's own defaults: each type carries
 // its own server defaults (poster_badge_style vs logo_badge_style, etc.), so the
@@ -305,6 +312,13 @@ const queryString = computed(() => {
   if (langIcon.value !== 'default' && langIcon.value !== 'off') params.set('lang_icon', langIcon.value)
   const langCodeVal = langCode.value.trim()
   if (langCodeVal && langIconActive) params.set('lang_code', langCodeVal)
+  // Anchor positions are meaningful only when the matching overlay actually
+  // renders, and are emitted only when the user overrides the server default —
+  // mirroring the gating for `quality_style`/`lang_code` above.
+  if (qualityTiers.value.length && qualityPosition.value !== 'default')
+    params.set('quality_position', qualityPosition.value)
+  if (langIconActive && langPosition.value !== 'default')
+    params.set('lang_position', langPosition.value)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
 })
@@ -492,6 +506,38 @@ async function handleFetch() {
               <SelectItem value="off">Off</SelectItem>
               <SelectItem value="flag">Flag</SelectItem>
               <SelectItem value="text">Text</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="qualityPosition">
+            <SelectTrigger id="free-quality-position" aria-label="Quality badge position" class="bg-background">
+              <SelectValue placeholder="Quality position: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default" :key="qualityPositionDefaultLabel">{{ qualityPositionDefaultLabel }}</SelectItem>
+              <SelectItem value="bc">Bottom Center</SelectItem>
+              <SelectItem value="tc">Top Center</SelectItem>
+              <SelectItem value="l">Left</SelectItem>
+              <SelectItem value="r">Right</SelectItem>
+              <SelectItem value="tl">Top Left</SelectItem>
+              <SelectItem value="tr">Top Right</SelectItem>
+              <SelectItem value="bl">Bottom Left</SelectItem>
+              <SelectItem value="br">Bottom Right</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="langPosition">
+            <SelectTrigger id="free-lang-position" aria-label="Main-language badge position" class="bg-background">
+              <SelectValue placeholder="Language position: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default" :key="langPositionDefaultLabel">{{ langPositionDefaultLabel }}</SelectItem>
+              <SelectItem value="bc">Bottom Center</SelectItem>
+              <SelectItem value="tc">Top Center</SelectItem>
+              <SelectItem value="l">Left</SelectItem>
+              <SelectItem value="r">Right</SelectItem>
+              <SelectItem value="tl">Top Left</SelectItem>
+              <SelectItem value="tr">Top Right</SelectItem>
+              <SelectItem value="bl">Bottom Left</SelectItem>
+              <SelectItem value="br">Bottom Right</SelectItem>
             </SelectContent>
           </Select>
           <Input

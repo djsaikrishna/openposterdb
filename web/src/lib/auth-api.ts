@@ -48,6 +48,8 @@ export interface FreeKeyDefaults {
   episode_badge_background: string
   quality_style: string
   lang_icon: string
+  quality_position: string
+  lang_position: string
 }
 
 export const authApi = {

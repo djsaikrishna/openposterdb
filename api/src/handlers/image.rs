@@ -148,6 +148,17 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub lang_code: Option<String>,
+    /// Anchor position for the quality badge, independent of the ratings and the
+    /// language badge: `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` (default `tr`).
+    /// Ignored on logos.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub quality_position: Option<BadgePosition>,
+    /// Anchor position for the main-language badge, independent of the ratings
+    /// and the quality badge (default `tl`). Ignored on logos.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub lang_position: Option<BadgePosition>,
 }
 
 impl ImageQuery {
@@ -174,6 +185,8 @@ impl ImageQuery {
             || self.quality_style.is_some()
             || self.lang_icon.is_some()
             || self.lang_code.is_some()
+            || self.quality_position.is_some()
+            || self.lang_position.is_some()
     }
 }
 
@@ -248,6 +261,8 @@ pub struct FreeKeySettingsResponse {
     pub episode_badge_background: BadgeBackground,
     pub quality_style: QualityStyle,
     pub lang_icon: LangIcon,
+    pub quality_position: BadgePosition,
+    pub lang_position: BadgePosition,
 }
 
 impl From<&RenderSettings> for FreeKeySettingsResponse {
@@ -295,6 +310,8 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             episode_badge_background: s.episode_badge_background,
             quality_style: s.quality_style,
             lang_icon: s.lang_icon,
+            quality_position: s.quality_position,
+            lang_position: s.lang_position,
         }
     }
 }
@@ -539,6 +556,12 @@ fn apply_query_overrides(
     if let Some(ref code) = query.lang_code {
         db::validate_lang_code(code).map_err(|e| e.into_response())?;
         s.lang_code = Some(Arc::from(code.as_str()));
+    }
+    if let Some(pos) = query.quality_position {
+        s.quality_position = pos;
+    }
+    if let Some(pos) = query.lang_position {
+        s.lang_position = pos;
     }
 
     Ok(Arc::new(s))
@@ -948,6 +971,8 @@ mod tests {
             quality_style: None,
             lang_icon: None,
             lang_code: None,
+            quality_position: None,
+            lang_position: None,
         }
     }
 

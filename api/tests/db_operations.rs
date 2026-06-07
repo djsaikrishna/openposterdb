@@ -49,6 +49,8 @@ fn test_upsert(key_id: i32) -> UpsertApiKeySettings<'static> {
         backdrop_edge_inset_y: 0,
         quality_style: "text",
         lang_icon: "off",
+        quality_position: "tr",
+        lang_position: "tl",
     }
 }
 

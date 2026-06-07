@@ -402,4 +402,12 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN lang_icon TEXT NOT NULL DEFAULT 'off'",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN quality_position TEXT NOT NULL DEFAULT 'tr'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN lang_position TEXT NOT NULL DEFAULT 'tl'",
+        "duplicate column",
+    ),
 ];

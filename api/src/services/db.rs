@@ -1012,6 +1012,16 @@ pub fn default_lang_icon() -> LangIcon {
     LangIcon::Off
 }
 
+/// Default anchor for the quality overlay badge: top-right.
+pub fn default_quality_position() -> BadgePosition {
+    BadgePosition::TopRight
+}
+
+/// Default anchor for the main-language overlay badge: top-left.
+pub fn default_lang_position() -> BadgePosition {
+    BadgePosition::TopLeft
+}
+
 /// Validate an explicit `lang_code` override for the language badge. Same shape
 /// as `validate_lang` (2–5 ASCII alphanumeric/hyphen).
 pub fn validate_lang_code(code: &str) -> Result<(), AppError> {
@@ -1029,6 +1039,7 @@ pub fn overlay_cache_suffix(settings: &RenderSettings) -> String {
     if !tiers.is_empty() {
         let chars: String = tiers.iter().map(|t| t.cache_char()).collect();
         out.push_str(&format!(".q{}{}", settings.quality_style.cache_char(), chars));
+        out.push_str(&format!(".qp{}", settings.quality_position.as_str()));
     }
     if !settings.lang_icon.is_off() {
         out.push_str(settings.lang_icon.cache_suffix());
@@ -1036,6 +1047,7 @@ pub fn overlay_cache_suffix(settings: &RenderSettings) -> String {
             out.push('-');
             out.push_str(code);
         }
+        out.push_str(&format!(".lp{}", settings.lang_position.as_str()));
     }
     out
 }
@@ -1344,6 +1356,14 @@ mod tests {
         let suffix = overlay_cache_suffix(&s);
         assert!(suffix.contains(".ql4v"), "quality token missing: {suffix}");
         assert!(suffix.contains(".lif"), "lang token missing: {suffix}");
+        // Independent positions are encoded (defaults tr/tl).
+        assert!(suffix.contains(".qptr"), "quality position missing: {suffix}");
+        assert!(suffix.contains(".lptl"), "lang position missing: {suffix}");
+        // A different quality position changes the key.
+        let mut sp = s.clone();
+        sp.quality_position = BadgePosition::BottomLeft;
+        assert!(overlay_cache_suffix(&sp).contains(".qpbl"));
+        assert_ne!(overlay_cache_suffix(&s), overlay_cache_suffix(&sp));
         // An explicit lang_code override is encoded; the derived one is not.
         let mut s2 = s.clone();
         s2.lang_code = Some(Arc::from("ja"));
@@ -2320,6 +2340,8 @@ pub struct UpsertApiKeySettings<'a> {
     pub backdrop_edge_inset_y: i32,
     pub quality_style: &'a str,
     pub lang_icon: &'a str,
+    pub quality_position: &'a str,
+    pub lang_position: &'a str,
 }
 
 pub async fn upsert_api_key_settings(
@@ -2370,6 +2392,8 @@ pub async fn upsert_api_key_settings(
         backdrop_edge_inset_y: Set(params.backdrop_edge_inset_y),
         quality_style: Set(params.quality_style.to_string()),
         lang_icon: Set(params.lang_icon.to_string()),
+        quality_position: Set(params.quality_position.to_string()),
+        lang_position: Set(params.lang_position.to_string()),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -2417,6 +2441,8 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::BackdropEdgeInsetY,
                     api_key_settings::Column::QualityStyle,
                     api_key_settings::Column::LangIcon,
+                    api_key_settings::Column::QualityPosition,
+                    api_key_settings::Column::LangPosition,
                 ])
                 .to_owned(),
         )
@@ -2501,6 +2527,14 @@ pub struct RenderSettings {
     /// only from the `?lang_code=` query param. When `None`, the title's
     /// resolved `original_language` is used.
     pub lang_code: Option<Arc<str>>,
+    /// Anchor position for the quality overlay badge, independent of the rating
+    /// badges and the language badge. Applies to poster/backdrop/episode
+    /// (ignored for logos). Persisted. Default: top-right.
+    pub quality_position: BadgePosition,
+    /// Anchor position for the main-language overlay badge, independent of the
+    /// rating badges and the quality badge. Applies to poster/backdrop/episode
+    /// (ignored for logos). Persisted. Default: top-left.
+    pub lang_position: BadgePosition,
 }
 
 impl RenderSettings {
@@ -2570,6 +2604,8 @@ impl Default for RenderSettings {
             quality_style: default_quality_style(),
             lang_icon: default_lang_icon(),
             lang_code: None,
+            quality_position: default_quality_position(),
+            lang_position: default_lang_position(),
         }
     }
 }
@@ -2664,6 +2700,8 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         quality_style: global_or(globals, "quality_style", QualityStyle::parse, defaults.quality_style),
         lang_icon: global_or(globals, "lang_icon", LangIcon::parse, defaults.lang_icon),
         lang_code: None,
+        quality_position: global_or(globals, "quality_position", BadgePosition::parse, defaults.quality_position),
+        lang_position: global_or(globals, "lang_position", BadgePosition::parse, defaults.lang_position),
     }
 }
 
@@ -2721,6 +2759,8 @@ pub async fn get_effective_render_settings(
                 quality_style: parse_setting_or_default(&s.quality_style, "quality_style", QualityStyle::parse, default_quality_style()),
                 lang_icon: parse_setting_or_default(&s.lang_icon, "lang_icon", LangIcon::parse, default_lang_icon()),
                 lang_code: None,
+                quality_position: parse_setting_or_default(&s.quality_position, "quality_position", BadgePosition::parse, default_quality_position()),
+                lang_position: parse_setting_or_default(&s.lang_position, "lang_position", BadgePosition::parse, default_lang_position()),
             };
         }
         Ok(None) => {} // no per-key override, fall through

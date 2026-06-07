@@ -51,6 +51,8 @@ const defaultSettings: RenderSettings = {
   episode_badge_background: 'd',
   quality_style: 'text',
   lang_icon: 'off',
+  quality_position: 'tr',
+  lang_position: 'tl',
 }
 
 function makeFetchPreview() {
@@ -253,6 +255,12 @@ describe('RenderSettingsForm', () => {
     expect(wrapper.find('[data-testid="lang-icon-select"]').exists()).toBe(true)
   })
 
+  it('renders quality-position and lang-position dropdowns', () => {
+    const wrapper = mountForm()
+    expect(wrapper.find('[data-testid="quality-position-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="lang-position-select"]').exists()).toBe(true)
+  })
+
   it('includes quality_style and lang_icon in the auto-save payload', async () => {
     const saveSettings = vi.fn().mockResolvedValue(null)
     const settings = { ...defaultSettings, quality_style: 'logo', lang_icon: 'flag' }
@@ -276,6 +284,32 @@ describe('RenderSettingsForm', () => {
 
     expect(saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({ quality_style: 'logo', lang_icon: 'flag' }),
+    )
+  })
+
+  it('includes quality_position and lang_position in the auto-save payload', async () => {
+    const saveSettings = vi.fn().mockResolvedValue(null)
+    const settings = { ...defaultSettings, quality_position: 'bl', lang_position: 'br' }
+    const wrapper = mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings,
+        fetchPreview: makeFetchPreview(),
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+
+    // Trigger an auto-save via an unrelated control; the payload carries the
+    // current quality_position/lang_position values from the loaded settings.
+    await wrapper.find('[data-testid="textless-checkbox"]').setValue(true)
+    await flushPromises()
+
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ quality_position: 'bl', lang_position: 'br' }),
     )
   })
 

@@ -470,3 +470,28 @@ async fn invalid_lang_icon_rejected() {
     let api_key = create_api_key(&app).await;
     assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?lang_icon=bogus")).await;
 }
+
+#[tokio::test]
+async fn independent_overlay_positions_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+    // Quality top-left, language bottom-right — independent of ratings.
+    assert_not_bad_request(
+        &app,
+        format!("/{api_key}/imdb/poster-default/tt0000001.jpg?quality=4k,dv&quality_position=tl&lang_icon=flag&lang_position=br"),
+    )
+    .await;
+    assert_not_bad_request(
+        &app,
+        format!("/{api_key}/imdb/backdrop-default/tt0000001.jpg?quality=hdr&quality_position=bl&lang_icon=text&lang_position=tr"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn invalid_overlay_position_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+    assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?quality_position=bogus")).await;
+    assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?lang_position=xyz")).await;
+}

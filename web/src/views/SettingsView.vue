@@ -88,6 +88,8 @@ async function toggleFreeApiKey() {
     episode_badge_background: s.episode_badge_background,
     quality_style: s.quality_style,
     lang_icon: s.lang_icon,
+    quality_position: s.quality_position,
+    lang_position: s.lang_position,
     free_api_key_enabled: newVal,
   })
   if (res.ok) {

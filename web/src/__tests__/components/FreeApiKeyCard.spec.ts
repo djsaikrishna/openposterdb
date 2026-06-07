@@ -49,6 +49,8 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     episode_blur: false,
     quality_style: 'text',
     lang_icon: 'off',
+    quality_position: 'tr',
+    lang_position: 'tl',
     ...overrides,
   }
 }
@@ -668,6 +670,50 @@ describe('FreeApiKeyCard', () => {
     const text = wrapper.text()
     expect(text).toContain('Quality style: default (Logo)')
     expect(text).toContain('Language icon: default (Flag)')
+  })
+
+  it('renders the quality-position and lang-position selects', () => {
+    const wrapper = mountCard(true)
+    expect(wrapper.find('#free-quality-position').exists()).toBe(true)
+    expect(wrapper.find('#free-lang-position').exists()).toBe(true)
+  })
+
+  it('adds quality_position only when a quality tier is active and the position is overridden', async () => {
+    const wrapper = mountCard(true)
+    // No tiers selected → position is irrelevant and omitted even when set.
+    await setSelectById(wrapper, 'free-quality-position', 'bl')
+    expect(findCurlCode(wrapper).text()).not.toContain('quality_position=')
+
+    // Select a tier so the quality overlay renders; position is now emitted.
+    await wrapper.find('#free-quality-4k').trigger('click')
+    await flushPromises()
+    expect(findCurlCode(wrapper).text()).toContain('quality_position=bl')
+  })
+
+  it('omits quality_position while it matches the default sentinel', async () => {
+    const wrapper = mountCard(true)
+    await wrapper.find('#free-quality-4k').trigger('click')
+    await flushPromises()
+    // Tier active but position left at 'default' → no param.
+    expect(findCurlCode(wrapper).text()).not.toContain('quality_position=')
+  })
+
+  it('adds lang_position only when a language icon is active and the position is overridden', async () => {
+    const wrapper = mountCard(true)
+    // Icon off/default → position omitted even when set.
+    await setSelectById(wrapper, 'free-lang-position', 'br')
+    expect(findCurlCode(wrapper).text()).not.toContain('lang_position=')
+
+    // Enable a language icon → position is now emitted.
+    await setSelectById(wrapper, 'free-lang-icon', 'flag')
+    expect(findCurlCode(wrapper).text()).toContain('lang_position=br')
+  })
+
+  it('annotates quality_position and lang_position defaults with the server values', () => {
+    const wrapper = mountCard(true, makeDefaults({ quality_position: 'bl', lang_position: 'br' }))
+    const text = wrapper.text()
+    expect(text).toContain('Quality position: default (Bottom Left)')
+    expect(text).toContain('Language position: default (Bottom Right)')
   })
 
   it('loads and reflects server defaults via the API on mount', async () => {

@@ -137,6 +137,8 @@ pub struct RenderSettingsResponse {
     pub episode_badge_background: BadgeBackground,
     pub quality_style: QualityStyle,
     pub lang_icon: LangIcon,
+    pub quality_position: BadgePosition,
+    pub lang_position: BadgePosition,
 }
 
 pub async fn get_settings(
@@ -196,6 +198,8 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         episode_badge_background: settings.episode_badge_background,
         quality_style: settings.quality_style,
         lang_icon: settings.lang_icon,
+        quality_position: settings.quality_position,
+        lang_position: settings.lang_position,
     }
 }
 
@@ -285,6 +289,10 @@ pub struct UpdateSettingsRequest {
     pub quality_style: QualityStyle,
     #[serde(default = "db::default_lang_icon")]
     pub lang_icon: LangIcon,
+    #[serde(default = "db::default_quality_position")]
+    pub quality_position: BadgePosition,
+    #[serde(default = "db::default_lang_position")]
+    pub lang_position: BadgePosition,
 }
 
 fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySettings<'_> {
@@ -332,6 +340,8 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         backdrop_edge_inset_y: db::clamp_edge_inset(req.backdrop_edge_inset_y),
         quality_style: req.quality_style.as_str(),
         lang_icon: req.lang_icon.as_str(),
+        quality_position: req.quality_position.as_str(),
+        lang_position: req.lang_position.as_str(),
     }
 }
 
