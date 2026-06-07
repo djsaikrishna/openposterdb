@@ -305,23 +305,20 @@ async fn resolve_episode_details(
     let tvdb_id = details.external_ids.as_ref().and_then(|e| e.tvdb_id);
     let still_path = hint_still_path.or(details.still_path.clone());
 
-    // Use still_path as poster_path; fallback to series poster if no still.
-    // When we fetch the show for the poster fallback we also pick up its
-    // `original_language` for the language badge; episodes have no language of
-    // their own, so it's inherited from the show.
-    let mut original_language: Option<String> = None;
-    let poster_path = if still_path.is_some() {
-        still_path.clone()
-    } else {
-        #[derive(Deserialize)]
-        struct ShowInfo {
-            poster_path: Option<String>,
-            original_language: Option<String>,
-        }
-        let show: ShowInfo = tmdb.get(&format!("/tv/{show_tmdb_id}"), &[]).await?;
-        original_language = show.original_language;
-        show.poster_path
-    };
+    // Fetch the parent show unconditionally for its `original_language`:
+    // episodes have no language of their own, so the language badge inherits it
+    // from the show, and it must be populated whether or not the episode has its
+    // own still (the common case). The show's `poster_path` also serves as the
+    // poster fallback when the episode has no still.
+    #[derive(Deserialize)]
+    struct ShowInfo {
+        poster_path: Option<String>,
+        original_language: Option<String>,
+    }
+    let show: ShowInfo = tmdb.get(&format!("/tv/{show_tmdb_id}"), &[]).await?;
+    let original_language = show.original_language;
+    // Use still_path as poster_path; fall back to the series poster if no still.
+    let poster_path = still_path.clone().or(show.poster_path);
 
     Ok(ResolvedId {
         imdb_id,

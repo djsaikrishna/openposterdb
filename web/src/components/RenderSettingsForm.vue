@@ -60,6 +60,7 @@ export interface RenderSettings {
   backdrop_badge_background: string
   episode_badge_background: string
   quality_style: string
+  quality_direction: string
   lang_icon: string
   lang_exclude: string
   quality_position: string

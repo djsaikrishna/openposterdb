@@ -338,7 +338,12 @@ pub fn settings_cache_suffix_with_ratings(
             let bsz = settings.logo_badge_size.cache_suffix();
             let shp = badge_shape_cache_suffix(settings.logo_badge_shape.as_str());
             let bgd = badge_background_cache_suffix(settings.logo_badge_background.as_str());
-            format!("{rs}{bs}{ls}{bsz}{shp}{bgd}{ql}{is_suffix}")
+            // Logos stack their overlay badges below the logo and ignore the
+            // anchor positions / quality direction, so use the logo-specific
+            // token that omits `.qp`/`.lp`/`.qd` — otherwise byte-identical logo
+            // renders would split across distinct cache entries.
+            let ql_logo = crate::services::db::overlay_cache_suffix_logo(settings);
+            format!("{rs}{bs}{ls}{bsz}{shp}{bgd}{ql_logo}{is_suffix}")
         }
         cache::ImageType::Backdrop => {
             let ps = position_cache_suffix(settings.backdrop_position.as_str());

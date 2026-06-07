@@ -1111,25 +1111,47 @@ fn lang_exclude_cache_token(exclude: &str) -> String {
 /// because it is a function of the title id already present in the key; only an
 /// explicit `lang_code` override is encoded.
 pub fn overlay_cache_suffix(settings: &RenderSettings) -> String {
+    overlay_cache_suffix_inner(settings, true)
+}
+
+/// Logo-specific overlay token. Logos always stack their quality/language
+/// badges below the logo and ignore the anchor positions and quality direction
+/// (see `render_logo_sync`), so encoding `.qp`/`.lp`/`.qd` here would split
+/// byte-identical logo renders across distinct cache entries. This omits those
+/// three tokens while keeping `.q{style}{tiers}`, `.li{icon}`(`-{code}`), and
+/// `.lx{codes}` — all of which still affect the rendered logo.
+pub fn overlay_cache_suffix_logo(settings: &RenderSettings) -> String {
+    overlay_cache_suffix_inner(settings, false)
+}
+
+fn overlay_cache_suffix_inner(settings: &RenderSettings, include_anchors: bool) -> String {
     let mut out = String::new();
     let tiers = parse_quality_tiers(&settings.quality);
     if !tiers.is_empty() {
         let chars: String = tiers.iter().map(|t| t.cache_char()).collect();
         out.push_str(&format!(".q{}{}", settings.quality_style.cache_char(), chars));
-        out.push_str(&format!(".qp{}", settings.quality_position.as_str()));
-        // Auto (Default) follows the rating badges' direction, already in the key
-        // via the `.d{dir}` token — only an explicit override needs encoding.
-        if settings.quality_direction != BadgeDirection::Default {
-            out.push_str(&format!(".qd{}", settings.quality_direction.as_str()));
+        if include_anchors {
+            out.push_str(&format!(".qp{}", settings.quality_position.as_str()));
+            // Auto (Default) follows the rating badges' direction, already in the
+            // key via the `.d{dir}` token — only an explicit override needs encoding.
+            if settings.quality_direction != BadgeDirection::Default {
+                out.push_str(&format!(".qd{}", settings.quality_direction.as_str()));
+            }
         }
     }
     if !settings.lang_icon.is_off() {
         out.push_str(settings.lang_icon.cache_suffix());
-        if let Some(code) = &settings.lang_code {
+        // Canonicalize the override before encoding so equivalent forms
+        // (`pt-BR`/`PT-BR`/`pt-br`/`pt`, or the `cn`→`zh` alias) — which all
+        // render the identical badge — share one cache entry. A code that
+        // canonicalizes to `None` (e.g. `xx`) draws no flag, so it's omitted.
+        if let Some(code) = settings.lang_code.as_deref().and_then(canonical_lang) {
             out.push('-');
-            out.push_str(code);
+            out.push_str(&code);
         }
-        out.push_str(&format!(".lp{}", settings.lang_position.as_str()));
+        if include_anchors {
+            out.push_str(&format!(".lp{}", settings.lang_position.as_str()));
+        }
         // Excluded languages change which titles get a badge, so they must be in
         // the key. (The per-title language itself is a function of the title id,
         // already in the key.)
@@ -1463,12 +1485,58 @@ mod tests {
         let mut s2 = s.clone();
         s2.lang_code = Some(Arc::from("ja"));
         assert!(overlay_cache_suffix(&s2).contains(".lif-ja"));
+        // The override is canonicalized before encoding, so equivalent forms
+        // (which render the identical badge) share one cache entry.
+        let mut s_region = s.clone();
+        s_region.lang_code = Some(Arc::from("PT-BR"));
+        assert!(
+            overlay_cache_suffix(&s_region).contains(".lif-pt"),
+            "lang_code must be canonicalized: {}",
+            overlay_cache_suffix(&s_region)
+        );
+        let mut s_pt = s.clone();
+        s_pt.lang_code = Some(Arc::from("pt"));
+        assert_eq!(overlay_cache_suffix(&s_region), overlay_cache_suffix(&s_pt));
+        // A code that canonicalizes to "no language" draws no flag → no token.
+        let mut s_none = s.clone();
+        s_none.lang_code = Some(Arc::from("xx"));
+        assert!(!overlay_cache_suffix(&s_none).contains(".lif-"));
         // Text style + text lang produce distinct tokens.
         let mut s3 = RenderSettings::default();
         s3.quality = Arc::from("4k");
         s3.lang_icon = LangIcon::Text;
         assert!(overlay_cache_suffix(&s3).contains(".qt4"));
         assert!(overlay_cache_suffix(&s3).contains(".lit"));
+    }
+
+    #[test]
+    fn overlay_cache_suffix_logo_omits_anchor_tokens() {
+        let mut s = RenderSettings::default();
+        s.quality = Arc::from("4k");
+        s.quality_style = QualityStyle::Logo;
+        s.lang_icon = LangIcon::Flag;
+        s.lang_exclude = Arc::from("en");
+        // The discriminating tokens that still affect the logo render are kept.
+        let logo = overlay_cache_suffix_logo(&s);
+        assert!(logo.contains(".ql4"), "quality token missing: {logo}");
+        assert!(logo.contains(".lif"), "lang token missing: {logo}");
+        assert!(logo.contains(".lxen"), "lang-exclude token missing: {logo}");
+        // The anchor positions / quality direction are ignored by logos, so
+        // they are never encoded.
+        assert!(!logo.contains(".qp"), "logo must omit quality position: {logo}");
+        assert!(!logo.contains(".lp"), "logo must omit lang position: {logo}");
+        // Two logos differing only in position/direction share one cache entry.
+        let mut moved = s.clone();
+        moved.quality_position = BadgePosition::BottomLeft;
+        moved.lang_position = BadgePosition::BottomRight;
+        moved.quality_direction = BadgeDirection::Vertical;
+        assert_eq!(
+            overlay_cache_suffix_logo(&s),
+            overlay_cache_suffix_logo(&moved),
+            "logo positions/direction must not affect the cache key"
+        );
+        // Sanity: the non-logo token does still split on those settings.
+        assert_ne!(overlay_cache_suffix(&s), overlay_cache_suffix(&moved));
     }
 
     #[test]

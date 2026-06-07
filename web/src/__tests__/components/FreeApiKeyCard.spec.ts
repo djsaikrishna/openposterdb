@@ -631,13 +631,14 @@ describe('FreeApiKeyCard', () => {
     expect(findCurlCode(wrapper).text()).toContain('quality_style=logo')
   })
 
-  it('adds lang_icon only when set to flag or text (never off/default)', async () => {
+  it('adds lang_icon whenever overridden away from default (including off)', async () => {
     const wrapper = mountCard(true)
     expect(findCurlCode(wrapper).text()).not.toContain('lang_icon=')
 
-    // Explicitly choosing Off must not emit the param.
+    // Explicitly choosing Off must emit the param, so it overrides a non-off
+    // server default (e.g. an admin who set the global default to flag/text).
     await setSelectById(wrapper, 'free-lang-icon', 'off')
-    expect(findCurlCode(wrapper).text()).not.toContain('lang_icon=')
+    expect(findCurlCode(wrapper).text()).toContain('lang_icon=off')
 
     await setSelectById(wrapper, 'free-lang-icon', 'flag')
     expect(findCurlCode(wrapper).text()).toContain('lang_icon=flag')

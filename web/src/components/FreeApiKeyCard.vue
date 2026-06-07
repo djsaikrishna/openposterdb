@@ -312,7 +312,7 @@ const queryString = computed(() => {
   if (qualityTiers.value.length) params.set('quality', qualityTiers.value.join(','))
   if (qualityStyle.value !== 'default') params.set('quality_style', qualityStyle.value)
   const langIconActive = langIcon.value === 'flag' || langIcon.value === 'text'
-  if (langIcon.value !== 'default' && langIcon.value !== 'off') params.set('lang_icon', langIcon.value)
+  if (langIcon.value !== 'default') params.set('lang_icon', langIcon.value)
   const langCodeVal = langCode.value.trim()
   if (langCodeVal && langIconActive) params.set('lang_code', langCodeVal)
   const langExcludeVal = langExclude.value.trim()
