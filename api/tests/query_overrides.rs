@@ -495,3 +495,23 @@ async fn invalid_overlay_position_rejected() {
     assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?quality_position=bogus")).await;
     assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?lang_position=xyz")).await;
 }
+
+#[tokio::test]
+async fn quality_direction_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+    for dir in ["d", "h", "v"] {
+        assert_not_bad_request(
+            &app,
+            format!("/{api_key}/imdb/poster-default/tt0000001.jpg?quality=4k,dv&quality_direction={dir}"),
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
+async fn invalid_quality_direction_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+    assert_bad_request(&app, format!("/{api_key}/imdb/poster-default/tt0000001.jpg?quality_direction=diagonal")).await;
+}

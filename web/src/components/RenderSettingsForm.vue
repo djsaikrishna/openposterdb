@@ -121,6 +121,7 @@ const editLogoBadgeBackground = ref(props.settings.logo_badge_background || 'd')
 const editBackdropBadgeBackground = ref(props.settings.backdrop_badge_background || 'd')
 const editEpisodeBadgeBackground = ref(props.settings.episode_badge_background || 'd')
 const editQualityStyle = ref(props.settings.quality_style || 'text')
+const editQualityDirection = ref(props.settings.quality_direction || 'd')
 const editLangIcon = ref(props.settings.lang_icon || 'off')
 const editQualityPosition = ref(props.settings.quality_position || 'tr')
 const editLangPosition = ref(props.settings.lang_position || 'tl')
@@ -179,6 +180,7 @@ function applySettings(s: RenderSettings) {
   editBackdropBadgeBackground.value = s.backdrop_badge_background || 'd'
   editEpisodeBadgeBackground.value = s.episode_badge_background || 'd'
   editQualityStyle.value = s.quality_style || 'text'
+  editQualityDirection.value = s.quality_direction || 'd'
   editLangIcon.value = s.lang_icon || 'off'
   editQualityPosition.value = s.quality_position || 'tr'
   editLangPosition.value = s.lang_position || 'tl'
@@ -259,6 +261,7 @@ async function autoSave() {
       backdrop_badge_background: editBackdropBadgeBackground.value,
       episode_badge_background: editEpisodeBadgeBackground.value,
       quality_style: editQualityStyle.value,
+      quality_direction: editQualityDirection.value,
       lang_icon: editLangIcon.value,
       quality_position: editQualityPosition.value,
       lang_position: editLangPosition.value,
@@ -288,7 +291,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground, editQualityStyle, editLangIcon, editQualityPosition, editLangPosition],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground, editQualityStyle, editQualityDirection, editLangIcon, editQualityPosition, editLangPosition],
   () => {
     if (syncing) return
     autoSave()
@@ -539,6 +542,22 @@ function toggleExclude(key: string, checked: boolean) {
           <SelectContent>
             <SelectItem value="text">Text</SelectItem>
             <SelectItem value="logo">Logo</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-2">
+        <Label :for="inputId('quality-direction')">Quality badge direction</Label>
+        <Select
+          :model-value="editQualityDirection"
+          @update:model-value="editQualityDirection = $event as string"
+        >
+          <SelectTrigger :id="inputId('quality-direction')" class="max-w-xs" data-testid="quality-direction-select">
+            <SelectValue placeholder="Select direction" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="d">Default</SelectItem>
+            <SelectItem value="h">Horizontal</SelectItem>
+            <SelectItem value="v">Vertical</SelectItem>
           </SelectContent>
         </Select>
       </div>

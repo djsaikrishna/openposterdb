@@ -87,6 +87,7 @@ async function toggleFreeApiKey() {
     backdrop_badge_background: s.backdrop_badge_background,
     episode_badge_background: s.episode_badge_background,
     quality_style: s.quality_style,
+    quality_direction: s.quality_direction,
     lang_icon: s.lang_icon,
     quality_position: s.quality_position,
     lang_position: s.lang_position,

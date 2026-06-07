@@ -55,6 +55,8 @@ pub struct Model {
     pub lang_icon: String,
     /// Anchor position for the quality overlay badge (e.g. `tr`).
     pub quality_position: String,
+    /// Layout direction for stacked quality badges (`d` auto, `h`, `v`).
+    pub quality_direction: String,
     /// Anchor position for the main-language overlay badge (e.g. `tl`).
     pub lang_position: String,
 }

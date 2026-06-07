@@ -47,6 +47,7 @@ export interface FreeKeyDefaults {
   backdrop_badge_background: string
   episode_badge_background: string
   quality_style: string
+  quality_direction: string
   lang_icon: string
   quality_position: string
   lang_position: string

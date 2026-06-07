@@ -194,6 +194,7 @@ fn build_overlay_badges(settings: &RenderSettings, resolved: &id::ResolvedId) ->
     generate::OverlaySpec {
         quality,
         quality_position: settings.quality_position,
+        quality_direction: settings.quality_direction,
         language,
         language_position: settings.lang_position,
     }
@@ -290,6 +291,7 @@ pub fn settings_cache_suffix_with_ratings(
         lang_icon: _,       // folded into `ql`
         lang_code: _,       // folded into `ql`
         quality_position: _,// folded into `ql`
+        quality_direction: _,// folded into `ql`
         lang_position: _,   // folded into `ql`
     } = settings;
 

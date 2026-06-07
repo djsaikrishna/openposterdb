@@ -48,6 +48,7 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     episode_badge_direction: 'd',
     episode_blur: false,
     quality_style: 'text',
+    quality_direction: 'd',
     lang_icon: 'off',
     quality_position: 'tr',
     lang_position: 'tl',
@@ -676,6 +677,36 @@ describe('FreeApiKeyCard', () => {
     const wrapper = mountCard(true)
     expect(wrapper.find('#free-quality-position').exists()).toBe(true)
     expect(wrapper.find('#free-lang-position').exists()).toBe(true)
+  })
+
+  it('renders the quality-direction select', () => {
+    const wrapper = mountCard(true)
+    expect(wrapper.find('#free-quality-direction').exists()).toBe(true)
+  })
+
+  it('adds quality_direction only when a quality tier is active and the direction is overridden', async () => {
+    const wrapper = mountCard(true)
+    // No tiers selected → direction is irrelevant and omitted even when set.
+    await setSelectById(wrapper, 'free-quality-direction', 'v')
+    expect(findCurlCode(wrapper).text()).not.toContain('quality_direction=')
+
+    // Select a tier so the quality overlay renders; direction is now emitted.
+    await wrapper.find('#free-quality-4k').trigger('click')
+    await flushPromises()
+    expect(findCurlCode(wrapper).text()).toContain('quality_direction=v')
+  })
+
+  it('omits quality_direction while it matches the default sentinel', async () => {
+    const wrapper = mountCard(true)
+    await wrapper.find('#free-quality-4k').trigger('click')
+    await flushPromises()
+    // Tier active but direction left at 'default' → no param.
+    expect(findCurlCode(wrapper).text()).not.toContain('quality_direction=')
+  })
+
+  it('annotates the quality_direction default with the server value', () => {
+    const wrapper = mountCard(true, makeDefaults({ quality_direction: 'v' }))
+    expect(wrapper.text()).toContain('Quality direction: default (Vertical)')
   })
 
   it('adds quality_position only when a quality tier is active and the position is overridden', async () => {

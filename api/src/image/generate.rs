@@ -270,6 +270,9 @@ fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], p
 pub struct OverlaySpec {
     pub quality: Vec<badge::OverlayBadge>,
     pub quality_position: BadgePosition,
+    /// Layout direction for the quality group. `Default` follows the rating
+    /// badges' direction for the image type.
+    pub quality_direction: BadgeDirection,
     pub language: Vec<badge::OverlayBadge>,
     pub language_position: BadgePosition,
 }
@@ -279,6 +282,7 @@ impl Default for OverlaySpec {
         Self {
             quality: Vec::new(),
             quality_position: BadgePosition::TopRight,
+            quality_direction: BadgeDirection::Default,
             language: Vec::new(),
             language_position: BadgePosition::TopLeft,
         }
@@ -457,10 +461,16 @@ pub fn render_poster_sync(
     }
 
     // Quality and language overlay groups, each at its own independent anchor.
-    for (group, position) in [(&overlay.quality, overlay.quality_position), (&overlay.language, overlay.language_position)] {
+    // Quality has its own layout direction (auto = follow the rating badges);
+    // language follows the rating badges' direction.
+    let quality_dir = overlay.quality_direction.resolve_or(badge_direction);
+    for (group, position, dir) in [
+        (&overlay.quality, overlay.quality_position, quality_dir),
+        (&overlay.language, overlay.language_position, badge_direction),
+    ] {
         if !group.is_empty() {
             let imgs = render_overlay_images(group, font, badge_style.is_vertical(), badge_appearance, badge_scale);
-            overlay_poster_group(&mut canvas, &imgs, position, badge_direction, max_per_row, badge_scale);
+            overlay_poster_group(&mut canvas, &imgs, position, dir, max_per_row, badge_scale);
         }
     }
 
@@ -742,10 +752,15 @@ pub fn render_backdrop_sync(
     }
 
     // Quality and language overlay groups, each at its own independent anchor.
-    for (group, gpos) in [(&overlay.quality, overlay.quality_position), (&overlay.language, overlay.language_position)] {
+    // Quality has its own layout direction (auto = follow the rating badges).
+    let quality_dir = overlay.quality_direction.resolve_or(badge_direction);
+    for (group, gpos, gdir) in [
+        (&overlay.quality, overlay.quality_position, quality_dir),
+        (&overlay.language, overlay.language_position, badge_direction),
+    ] {
         if !group.is_empty() {
             let imgs = render_overlay_images(group, font, badge_style.is_vertical(), badge_appearance, badge_scale);
-            if badge_direction.is_vertical() {
+            if gdir.is_vertical() {
                 overlay_vertical_stack(&mut canvas, &imgs, gpos, badge_scale, BACKDROP_SIDE_MARGIN, 0, 0);
             } else {
                 overlay_horizontal_rows(&mut canvas, &imgs, gpos, imgs.len(), badge_scale, BACKDROP_SIDE_MARGIN, 0, 0);
@@ -864,10 +879,15 @@ pub fn render_episode_sync(
     }
 
     // Quality and language overlay groups, each at its own independent anchor.
-    for (group, gpos) in [(&overlay.quality, overlay.quality_position), (&overlay.language, overlay.language_position)] {
+    // Quality has its own layout direction (auto = follow the rating badges).
+    let quality_dir = overlay.quality_direction.resolve_or(badge_direction);
+    for (group, gpos, gdir) in [
+        (&overlay.quality, overlay.quality_position, quality_dir),
+        (&overlay.language, overlay.language_position, badge_direction),
+    ] {
         if !group.is_empty() {
             let imgs = render_overlay_images(group, font, badge_style.is_vertical(), badge_appearance, badge_scale);
-            if badge_direction.is_vertical() {
+            if gdir.is_vertical() {
                 overlay_vertical_stack(&mut canvas, &imgs, gpos, badge_scale, BADGE_SIDE_MARGIN, 0, 0);
             } else {
                 overlay_horizontal_rows(&mut canvas, &imgs, gpos, max_per_row, badge_scale, BADGE_SIDE_MARGIN, 0, 0);

@@ -157,6 +157,7 @@ pub struct GlobalSettingsResponse {
     pub lang_icon: LangIcon,
     pub quality_position: BadgePosition,
     pub lang_position: BadgePosition,
+    pub quality_direction: BadgeDirection,
 }
 
 pub async fn get_settings(
@@ -221,6 +222,7 @@ pub async fn get_settings(
         lang_icon: settings.lang_icon,
         quality_position: settings.quality_position,
         lang_position: settings.lang_position,
+        quality_direction: settings.quality_direction,
     }))
 }
 
@@ -315,6 +317,8 @@ pub struct UpdateGlobalSettingsRequest {
     pub quality_position: BadgePosition,
     #[serde(default = "db::default_lang_position")]
     pub lang_position: BadgePosition,
+    #[serde(default = "db::default_quality_direction")]
+    pub quality_direction: BadgeDirection,
 }
 
 pub async fn update_settings(
@@ -376,6 +380,7 @@ pub async fn update_settings(
         ("lang_icon", req.lang_icon.as_str()),
         ("quality_position", req.quality_position.as_str()),
         ("lang_position", req.lang_position.as_str()),
+        ("quality_direction", req.quality_direction.as_str()),
     ];
     let free_key_str;
     if state.config.free_key_enabled.is_none() {

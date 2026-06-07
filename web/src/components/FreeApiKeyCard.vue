@@ -85,6 +85,7 @@ const blur = ref('default')
 // fall back to the server's persisted defaults.
 const qualityTiers = ref<string[]>([])
 const qualityStyle = ref('default')
+const qualityDirection = ref('default')
 const langIcon = ref('default')
 const langCode = ref('')
 // Anchor positions for the quality / main-language overlay badges. Like
@@ -215,6 +216,7 @@ const blurDefaultLabel = computed(() =>
   defaults.value ? `Blur: default (${defaults.value.episode_blur ? 'Yes' : 'No'})` : 'Blur: default',
 )
 const qualityStyleDefaultLabel = computed(() => annotate('Quality style', defaults.value?.quality_style, QUALITY_STYLE_LABELS))
+const qualityDirectionDefaultLabel = computed(() => annotate('Quality direction', defaults.value?.quality_direction, BADGE_DIRECTION_LABELS))
 const langIconDefaultLabel = computed(() => annotate('Language icon', defaults.value?.lang_icon, LANG_ICON_LABELS))
 const qualityPositionDefaultLabel = computed(() => annotate('Quality position', defaults.value?.quality_position, POSITION_LABELS))
 const langPositionDefaultLabel = computed(() => annotate('Language position', defaults.value?.lang_position, POSITION_LABELS))
@@ -317,6 +319,8 @@ const queryString = computed(() => {
   // mirroring the gating for `quality_style`/`lang_code` above.
   if (qualityTiers.value.length && qualityPosition.value !== 'default')
     params.set('quality_position', qualityPosition.value)
+  if (qualityTiers.value.length && qualityDirection.value !== 'default')
+    params.set('quality_direction', qualityDirection.value)
   if (langIconActive && langPosition.value !== 'default')
     params.set('lang_position', langPosition.value)
   const qs = params.toString()
@@ -495,6 +499,16 @@ async function handleFetch() {
               <SelectItem value="default" :key="qualityStyleDefaultLabel">{{ qualityStyleDefaultLabel }}</SelectItem>
               <SelectItem value="text">Text</SelectItem>
               <SelectItem value="logo">Logo</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="qualityDirection">
+            <SelectTrigger id="free-quality-direction" aria-label="Quality badge direction" class="bg-background">
+              <SelectValue placeholder="Quality direction: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default" :key="qualityDirectionDefaultLabel">{{ qualityDirectionDefaultLabel }}</SelectItem>
+              <SelectItem value="h">Horizontal</SelectItem>
+              <SelectItem value="v">Vertical</SelectItem>
             </SelectContent>
           </Select>
           <Select v-model="langIcon">

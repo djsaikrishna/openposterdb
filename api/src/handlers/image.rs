@@ -159,6 +159,11 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub lang_position: Option<BadgePosition>,
+    /// Layout direction for stacked quality badges: `d` (auto — same as the
+    /// rating badges), `h` (horizontal row), `v` (vertical column).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub quality_direction: Option<BadgeDirection>,
 }
 
 impl ImageQuery {
@@ -187,6 +192,7 @@ impl ImageQuery {
             || self.lang_code.is_some()
             || self.quality_position.is_some()
             || self.lang_position.is_some()
+            || self.quality_direction.is_some()
     }
 }
 
@@ -263,6 +269,7 @@ pub struct FreeKeySettingsResponse {
     pub lang_icon: LangIcon,
     pub quality_position: BadgePosition,
     pub lang_position: BadgePosition,
+    pub quality_direction: BadgeDirection,
 }
 
 impl From<&RenderSettings> for FreeKeySettingsResponse {
@@ -312,6 +319,7 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             lang_icon: s.lang_icon,
             quality_position: s.quality_position,
             lang_position: s.lang_position,
+            quality_direction: s.quality_direction,
         }
     }
 }
@@ -562,6 +570,9 @@ fn apply_query_overrides(
     }
     if let Some(pos) = query.lang_position {
         s.lang_position = pos;
+    }
+    if let Some(dir) = query.quality_direction {
+        s.quality_direction = dir;
     }
 
     Ok(Arc::new(s))
@@ -973,6 +984,7 @@ mod tests {
             lang_code: None,
             quality_position: None,
             lang_position: None,
+            quality_direction: None,
         }
     }
 
