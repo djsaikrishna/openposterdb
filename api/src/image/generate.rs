@@ -270,8 +270,8 @@ fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], p
 pub struct OverlaySpec {
     pub quality: Vec<badge::OverlayBadge>,
     pub quality_position: BadgePosition,
-    /// Layout direction for the quality group. `Default` follows the rating
-    /// badges' direction for the image type.
+    /// Layout direction for the quality group. `Default` (auto) resolves from
+    /// `quality_position` (column at corners/sides, row at top/bottom-center).
     pub quality_direction: BadgeDirection,
     pub language: Vec<badge::OverlayBadge>,
     pub language_position: BadgePosition,
@@ -461,9 +461,11 @@ pub fn render_poster_sync(
     }
 
     // Quality and language overlay groups, each at its own independent anchor.
-    // Quality has its own layout direction (auto = follow the rating badges);
-    // language follows the rating badges' direction.
-    let quality_dir = overlay.quality_direction.resolve_or(badge_direction);
+    // Quality has its own layout direction; auto (Default) resolves from the
+    // quality badge's own anchor — a column at corner/side positions, a row at
+    // top/bottom-center (the same rule the rating badges use). Language (a single
+    // badge) just follows the rating badges' direction.
+    let quality_dir = overlay.quality_direction.resolve(overlay.quality_position);
     for (group, position, dir) in [
         (&overlay.quality, overlay.quality_position, quality_dir),
         (&overlay.language, overlay.language_position, badge_direction),
@@ -752,8 +754,9 @@ pub fn render_backdrop_sync(
     }
 
     // Quality and language overlay groups, each at its own independent anchor.
-    // Quality has its own layout direction (auto = follow the rating badges).
-    let quality_dir = overlay.quality_direction.resolve_or(badge_direction);
+    // Quality has its own layout direction; auto (Default) resolves from its own
+    // anchor (column at corners/sides, row at top/bottom-center).
+    let quality_dir = overlay.quality_direction.resolve(overlay.quality_position);
     for (group, gpos, gdir) in [
         (&overlay.quality, overlay.quality_position, quality_dir),
         (&overlay.language, overlay.language_position, badge_direction),
@@ -879,8 +882,9 @@ pub fn render_episode_sync(
     }
 
     // Quality and language overlay groups, each at its own independent anchor.
-    // Quality has its own layout direction (auto = follow the rating badges).
-    let quality_dir = overlay.quality_direction.resolve_or(badge_direction);
+    // Quality has its own layout direction; auto (Default) resolves from its own
+    // anchor (column at corners/sides, row at top/bottom-center).
+    let quality_dir = overlay.quality_direction.resolve(overlay.quality_position);
     for (group, gpos, gdir) in [
         (&overlay.quality, overlay.quality_position, quality_dir),
         (&overlay.language, overlay.language_position, badge_direction),

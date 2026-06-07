@@ -159,8 +159,9 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub lang_position: Option<BadgePosition>,
-    /// Layout direction for stacked quality badges: `d` (auto — same as the
-    /// rating badges), `h` (horizontal row), `v` (vertical column).
+    /// Layout direction for stacked quality badges: `d` (auto — resolved from
+    /// the quality anchor: a column at corner/side positions, a row at
+    /// top/bottom-center), `h` (horizontal row), `v` (vertical column).
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub quality_direction: Option<BadgeDirection>,

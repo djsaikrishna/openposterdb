@@ -151,7 +151,8 @@ impl BadgeDirection {
         self == Self::Vertical
     }
 
-    /// Resolve `Default` to `Horizontal` or `Vertical` based on poster position.
+    /// Resolve `Default` to `Horizontal` or `Vertical` based on position: a row
+    /// at top/bottom-center anchors, a column at the corner/side anchors.
     pub fn resolve(self, position: BadgePosition) -> Self {
         if self != Self::Default {
             return self;
@@ -161,13 +162,6 @@ impl BadgeDirection {
         } else {
             Self::Vertical
         }
-    }
-
-    /// Resolve `Default` (auto) to `fallback`; non-default values pass through.
-    /// Lets the quality overlay group follow the rating badges' direction by
-    /// default while still allowing an explicit override.
-    pub fn resolve_or(self, fallback: BadgeDirection) -> Self {
-        if self == Self::Default { fallback } else { self }
     }
 }
 
@@ -1029,8 +1023,9 @@ pub fn default_lang_position() -> BadgePosition {
     BadgePosition::TopLeft
 }
 
-/// Default layout direction for stacked quality badges: `Default` (auto — follow
-/// the rating badges' direction for the image type).
+/// Default layout direction for stacked quality badges: `Default` (auto —
+/// resolved from the quality badge's anchor: a column at corner/side positions,
+/// a row at top/bottom-center).
 pub fn default_quality_direction() -> BadgeDirection {
     BadgeDirection::Default
 }
@@ -2558,8 +2553,9 @@ pub struct RenderSettings {
     /// badges and the language badge. Applies to poster/backdrop/episode
     /// (ignored for logos). Persisted. Default: top-right.
     pub quality_position: BadgePosition,
-    /// Layout direction for stacked quality badges. `Default` (auto) follows the
-    /// rating badges' direction for the image type. Persisted.
+    /// Layout direction for stacked quality badges. `Default` (auto) resolves
+    /// from the quality badge's anchor (column at corners/sides, row at
+    /// top/bottom-center). Persisted.
     pub quality_direction: BadgeDirection,
     /// Anchor position for the main-language overlay badge, independent of the
     /// rating badges and the quality badge. Applies to poster/backdrop/episode
