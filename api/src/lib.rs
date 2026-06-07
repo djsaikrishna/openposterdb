@@ -394,4 +394,12 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN backdrop_edge_inset_y INTEGER NOT NULL DEFAULT 0",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN quality_style TEXT NOT NULL DEFAULT 'text'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN lang_icon TEXT NOT NULL DEFAULT 'off'",
+        "duplicate column",
+    ),
 ];

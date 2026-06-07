@@ -105,6 +105,8 @@ export interface SaveSettingsPayload {
   logo_badge_background: string
   backdrop_badge_background: string
   episode_badge_background: string
+  quality_style: string
+  lang_icon: string
 }
 
 /** Build a URL path with query parameters, omitting entries with nullish values. */

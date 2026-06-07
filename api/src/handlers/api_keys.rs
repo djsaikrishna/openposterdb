@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use super::auth::AuthUser;
 use super::middleware::ApiKeyUser;
 use crate::error::AppError;
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource, PosterFit};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, LangIcon, BadgePosition, ImageSource, PosterFit, QualityStyle};
 use crate::services::validation;
 use crate::AppState;
 
@@ -135,6 +135,8 @@ pub struct RenderSettingsResponse {
     pub logo_badge_background: BadgeBackground,
     pub backdrop_badge_background: BadgeBackground,
     pub episode_badge_background: BadgeBackground,
+    pub quality_style: QualityStyle,
+    pub lang_icon: LangIcon,
 }
 
 pub async fn get_settings(
@@ -192,6 +194,8 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         logo_badge_background: settings.logo_badge_background,
         backdrop_badge_background: settings.backdrop_badge_background,
         episode_badge_background: settings.episode_badge_background,
+        quality_style: settings.quality_style,
+        lang_icon: settings.lang_icon,
     }
 }
 
@@ -277,6 +281,10 @@ pub struct UpdateSettingsRequest {
     pub backdrop_badge_background: BadgeBackground,
     #[serde(default = "db::default_badge_background")]
     pub episode_badge_background: BadgeBackground,
+    #[serde(default = "db::default_quality_style")]
+    pub quality_style: QualityStyle,
+    #[serde(default = "db::default_lang_icon")]
+    pub lang_icon: LangIcon,
 }
 
 fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySettings<'_> {
@@ -322,6 +330,8 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         episode_badge_background: req.episode_badge_background.as_str(),
         backdrop_edge_inset_x: db::clamp_edge_inset(req.backdrop_edge_inset_x),
         backdrop_edge_inset_y: db::clamp_edge_inset(req.backdrop_edge_inset_y),
+        quality_style: req.quality_style.as_str(),
+        lang_icon: req.lang_icon.as_str(),
     }
 }
 

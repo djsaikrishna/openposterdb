@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache;
 use crate::error::AppError;
 use crate::image::serve::{self, LogoBackdropKind};
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource, PosterFit};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, LangIcon, BadgePosition, ImageSource, PosterFit, QualityStyle};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -153,6 +153,8 @@ pub struct GlobalSettingsResponse {
     pub logo_badge_background: BadgeBackground,
     pub backdrop_badge_background: BadgeBackground,
     pub episode_badge_background: BadgeBackground,
+    pub quality_style: QualityStyle,
+    pub lang_icon: LangIcon,
 }
 
 pub async fn get_settings(
@@ -213,6 +215,8 @@ pub async fn get_settings(
         logo_badge_background: settings.logo_badge_background,
         backdrop_badge_background: settings.backdrop_badge_background,
         episode_badge_background: settings.episode_badge_background,
+        quality_style: settings.quality_style,
+        lang_icon: settings.lang_icon,
     }))
 }
 
@@ -299,6 +303,10 @@ pub struct UpdateGlobalSettingsRequest {
     pub backdrop_badge_background: BadgeBackground,
     #[serde(default = "db::default_badge_background")]
     pub episode_badge_background: BadgeBackground,
+    #[serde(default = "db::default_quality_style")]
+    pub quality_style: QualityStyle,
+    #[serde(default = "db::default_lang_icon")]
+    pub lang_icon: LangIcon,
 }
 
 pub async fn update_settings(
@@ -356,6 +364,8 @@ pub async fn update_settings(
         ("logo_badge_background", req.logo_badge_background.as_str()),
         ("backdrop_badge_background", req.backdrop_badge_background.as_str()),
         ("episode_badge_background", req.episode_badge_background.as_str()),
+        ("quality_style", req.quality_style.as_str()),
+        ("lang_icon", req.lang_icon.as_str()),
     ];
     let free_key_str;
     if state.config.free_key_enabled.is_none() {

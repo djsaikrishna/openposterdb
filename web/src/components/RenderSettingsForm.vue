@@ -59,6 +59,8 @@ export interface RenderSettings {
   logo_badge_background: string
   backdrop_badge_background: string
   episode_badge_background: string
+  quality_style: string
+  lang_icon: string
 }
 
 const props = defineProps<{
@@ -116,6 +118,8 @@ const editPosterBadgeBackground = ref(props.settings.poster_badge_background || 
 const editLogoBadgeBackground = ref(props.settings.logo_badge_background || 'd')
 const editBackdropBadgeBackground = ref(props.settings.backdrop_badge_background || 'd')
 const editEpisodeBadgeBackground = ref(props.settings.episode_badge_background || 'd')
+const editQualityStyle = ref(props.settings.quality_style || 'text')
+const editLangIcon = ref(props.settings.lang_icon || 'off')
 
 // Which edges the current backdrop position anchors to. The horizontal inset
 // only applies to left/right positions and the vertical inset only to top/bottom
@@ -170,6 +174,8 @@ function applySettings(s: RenderSettings) {
   editLogoBadgeBackground.value = s.logo_badge_background || 'd'
   editBackdropBadgeBackground.value = s.backdrop_badge_background || 'd'
   editEpisodeBadgeBackground.value = s.episode_badge_background || 'd'
+  editQualityStyle.value = s.quality_style || 'text'
+  editLangIcon.value = s.lang_icon || 'off'
 }
 const currentSettings = ref<RenderSettings>(props.settings)
 const saving = ref(false)
@@ -246,6 +252,8 @@ async function autoSave() {
       logo_badge_background: editLogoBadgeBackground.value,
       backdrop_badge_background: editBackdropBadgeBackground.value,
       episode_badge_background: editEpisodeBadgeBackground.value,
+      quality_style: editQualityStyle.value,
+      lang_icon: editLangIcon.value,
     })
     if (err) {
       error.value = err
@@ -272,7 +280,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editRatingsExclude, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSplit, editPosterFit, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editBackdropEdgeInsetX, editBackdropEdgeInsetY, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur, editPosterBadgeShape, editLogoBadgeShape, editBackdropBadgeShape, editEpisodeBadgeShape, editPosterBadgeBackground, editLogoBadgeBackground, editBackdropBadgeBackground, editEpisodeBadgeBackground, editQualityStyle, editLangIcon],
   () => {
     if (syncing) return
     autoSave()
@@ -506,6 +514,43 @@ function toggleExclude(key: string, checked: boolean) {
         <Label :for="inputId('fanart')">Prefer Fanart.tv as image source</Label>
       </div>
     </template>
+
+    <!-- Overlay badges: quality + main-language. These are global (not per
+         image type). Quality tiers and a language-code override are per-request
+         query params only, so they live in the "Try it out" card, not here. -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg pt-1">
+      <div class="space-y-2">
+        <Label :for="inputId('quality-style')">Quality badge style</Label>
+        <Select
+          :model-value="editQualityStyle"
+          @update:model-value="editQualityStyle = $event as string"
+        >
+          <SelectTrigger :id="inputId('quality-style')" class="max-w-xs" data-testid="quality-style-select">
+            <SelectValue placeholder="Select style" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="text">Text</SelectItem>
+            <SelectItem value="logo">Logo</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-2">
+        <Label :for="inputId('lang-icon')">Main-language icon</Label>
+        <Select
+          :model-value="editLangIcon"
+          @update:model-value="editLangIcon = $event as string"
+        >
+          <SelectTrigger :id="inputId('lang-icon')" class="max-w-xs" data-testid="lang-icon-select">
+            <SelectValue placeholder="Select icon" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="off">Off</SelectItem>
+            <SelectItem value="flag">Flag</SelectItem>
+            <SelectItem value="text">Text</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
 
     <div class="space-y-2 pt-2">
       <p class="text-sm font-semibold">Rating Display</p>

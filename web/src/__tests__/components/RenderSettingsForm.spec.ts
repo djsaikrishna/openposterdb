@@ -49,6 +49,8 @@ const defaultSettings: RenderSettings = {
   logo_badge_background: 'd',
   backdrop_badge_background: 'd',
   episode_badge_background: 'd',
+  quality_style: 'text',
+  lang_icon: 'off',
 }
 
 function makeFetchPreview() {
@@ -241,6 +243,40 @@ describe('RenderSettingsForm', () => {
     const wrapper = mountForm()
     const select = wrapper.find('[data-testid="poster-badge-direction-select"]')
     expect(select.exists()).toBe(true)
+  })
+
+  // --- Quality + main-language overlay badge settings (persisted) ---
+
+  it('renders quality-style and lang-icon dropdowns', () => {
+    const wrapper = mountForm()
+    expect(wrapper.find('[data-testid="quality-style-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="lang-icon-select"]').exists()).toBe(true)
+  })
+
+  it('includes quality_style and lang_icon in the auto-save payload', async () => {
+    const saveSettings = vi.fn().mockResolvedValue(null)
+    const settings = { ...defaultSettings, quality_style: 'logo', lang_icon: 'flag' }
+    const wrapper = mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings,
+        fetchPreview: makeFetchPreview(),
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+
+    // Trigger an auto-save via an unrelated control; the payload carries the
+    // current quality_style/lang_icon values from the loaded settings.
+    await wrapper.find('[data-testid="textless-checkbox"]').setValue(true)
+    await flushPromises()
+
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ quality_style: 'logo', lang_icon: 'flag' }),
+    )
   })
 
   // --- Exclude ratings ---

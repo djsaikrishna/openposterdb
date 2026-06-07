@@ -47,6 +47,8 @@ function makeDefaults(overrides: Partial<FreeKeyDefaults> = {}): FreeKeyDefaults
     episode_position: 'bc',
     episode_badge_direction: 'd',
     episode_blur: false,
+    quality_style: 'text',
+    lang_icon: 'off',
     ...overrides,
   }
 }
@@ -272,7 +274,9 @@ describe('FreeApiKeyCard', () => {
   it('idPlaceholder changes per idType', async () => {
     const wrapper = mountCard(true)
 
-    const getPlaceholder = () => wrapper.find('input:not([type="checkbox"])').attributes('placeholder')
+    // The ID input is the only non-checkbox input without an aria-label (the
+    // lang-code override input carries one), so exclude aria-labelled inputs.
+    const getPlaceholder = () => wrapper.find('input:not([type="checkbox"]):not([aria-label])').attributes('placeholder')
     expect(getPlaceholder()).toBe('tt0013442')
 
     await setSelectById(wrapper, 'free-id-type', 'tmdb')
@@ -599,6 +603,71 @@ describe('FreeApiKeyCard', () => {
     expect(text).toContain('Badge style: default')
     expect(text).not.toContain('Badge style: default (')
     expect(findCurlCode(wrapper).text()).not.toContain('ratings_order=')
+  })
+
+  // --- Quality + main-language overlay badges ---
+
+  it('adds quality only when at least one tier is selected, stacking in canonical order', async () => {
+    const wrapper = mountCard(true)
+    // No tiers selected → no quality param.
+    expect(findCurlCode(wrapper).text()).not.toContain('quality=')
+
+    // Select dv first, then 4k — the emitted value follows canonical tier order.
+    await wrapper.find('#free-quality-dv').trigger('click')
+    await wrapper.find('#free-quality-4k').trigger('click')
+    await flushPromises()
+    expect(findCurlCode(wrapper).text()).toContain('quality=4k%2Cdv')
+  })
+
+  it('adds quality_style only when overridden away from default', async () => {
+    const wrapper = mountCard(true)
+    expect(findCurlCode(wrapper).text()).not.toContain('quality_style=')
+
+    await setSelectById(wrapper, 'free-quality-style', 'logo')
+    expect(findCurlCode(wrapper).text()).toContain('quality_style=logo')
+  })
+
+  it('adds lang_icon only when set to flag or text (never off/default)', async () => {
+    const wrapper = mountCard(true)
+    expect(findCurlCode(wrapper).text()).not.toContain('lang_icon=')
+
+    // Explicitly choosing Off must not emit the param.
+    await setSelectById(wrapper, 'free-lang-icon', 'off')
+    expect(findCurlCode(wrapper).text()).not.toContain('lang_icon=')
+
+    await setSelectById(wrapper, 'free-lang-icon', 'flag')
+    expect(findCurlCode(wrapper).text()).toContain('lang_icon=flag')
+  })
+
+  it('adds lang_code only when non-empty and a language icon is enabled', async () => {
+    const wrapper = mountCard(true)
+    // lang_code with no icon active → omitted.
+    await wrapper.find('input[aria-label*="ISO 639-1"]').setValue('ja')
+    expect(findCurlCode(wrapper).text()).not.toContain('lang_code=')
+
+    // Enable an icon → lang_code is now sent.
+    await setSelectById(wrapper, 'free-lang-icon', 'text')
+    expect(findCurlCode(wrapper).text()).toContain('lang_code=ja')
+  })
+
+  it('quality and language badges persist across image-type switches (global controls)', async () => {
+    const wrapper = mountCard(true)
+    await wrapper.find('#free-quality-4k').trigger('click')
+    await setSelectById(wrapper, 'free-lang-icon', 'flag')
+    await flushPromises()
+    expect(findCurlCode(wrapper).text()).toContain('quality=4k')
+    expect(findCurlCode(wrapper).text()).toContain('lang_icon=flag')
+
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(findCurlCode(wrapper).text()).toContain('quality=4k')
+    expect(findCurlCode(wrapper).text()).toContain('lang_icon=flag')
+  })
+
+  it('annotates quality_style and lang_icon defaults with the server values', () => {
+    const wrapper = mountCard(true, makeDefaults({ quality_style: 'logo', lang_icon: 'flag' }))
+    const text = wrapper.text()
+    expect(text).toContain('Quality style: default (Logo)')
+    expect(text).toContain('Language icon: default (Flag)')
   })
 
   it('loads and reflects server defaults via the API on mount', async () => {

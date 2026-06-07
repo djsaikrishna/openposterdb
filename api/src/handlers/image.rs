@@ -11,8 +11,8 @@ use crate::handlers::auth::hash_api_key;
 use crate::image::serve;
 use crate::services::db;
 use crate::services::db::{
-    BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource,
-    PosterFit, RenderSettings,
+    BadgeBackground, BadgeDirection, BadgeShape, BadgeSize, BadgeStyle, LabelStyle, LangIcon, BadgePosition, ImageSource,
+    PosterFit, QualityStyle, RenderSettings,
 };
 use crate::AppState;
 
@@ -128,6 +128,26 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<i32>)]
     pub edge_inset_y: Option<i32>,
+    /// Caller-supplied media quality tiers for the quality overlay badge, comma
+    /// separated and stackable: any of `4k`, `1080p`, `720p`, `hdr`, `dv`
+    /// (e.g. `4k,dv`). There is no quality metadata server-side, so this must be
+    /// supplied by the caller. Empty/absent shows no quality badge.
+    #[serde(default)]
+    #[param(value_type = Option<String>, example = "4k,dv")]
+    pub quality: Option<String>,
+    /// How the quality badge renders: `text` (chip) or `logo` (brand logo).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub quality_style: Option<QualityStyle>,
+    /// Main-language overlay badge: `off`, `flag`, or `text`.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub lang_icon: Option<LangIcon>,
+    /// Override the title's detected language for the language badge (ISO 639-1,
+    /// e.g. `ja`). When absent, TMDB `original_language` is used.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub lang_code: Option<String>,
 }
 
 impl ImageQuery {
@@ -150,6 +170,10 @@ impl ImageQuery {
             || self.fit.is_some()
             || self.edge_inset_x.is_some()
             || self.edge_inset_y.is_some()
+            || self.quality.is_some()
+            || self.quality_style.is_some()
+            || self.lang_icon.is_some()
+            || self.lang_code.is_some()
     }
 }
 
@@ -222,6 +246,8 @@ pub struct FreeKeySettingsResponse {
     pub logo_badge_background: BadgeBackground,
     pub backdrop_badge_background: BadgeBackground,
     pub episode_badge_background: BadgeBackground,
+    pub quality_style: QualityStyle,
+    pub lang_icon: LangIcon,
 }
 
 impl From<&RenderSettings> for FreeKeySettingsResponse {
@@ -267,6 +293,8 @@ impl From<&RenderSettings> for FreeKeySettingsResponse {
             logo_badge_background: s.logo_badge_background,
             backdrop_badge_background: s.backdrop_badge_background,
             episode_badge_background: s.episode_badge_background,
+            quality_style: s.quality_style,
+            lang_icon: s.lang_icon,
         }
     }
 }
@@ -495,6 +523,22 @@ fn apply_query_overrides(
         if let Some(textless) = query.textless {
             s.textless = textless;
         }
+    }
+
+    // -- quality + main-language overlay badges (apply to all image types) --
+    if let Some(ref q) = query.quality {
+        db::validate_quality(q).map_err(|e| e.into_response())?;
+        s.quality = Arc::from(q.as_str());
+    }
+    if let Some(style) = query.quality_style {
+        s.quality_style = style;
+    }
+    if let Some(icon) = query.lang_icon {
+        s.lang_icon = icon;
+    }
+    if let Some(ref code) = query.lang_code {
+        db::validate_lang_code(code).map_err(|e| e.into_response())?;
+        s.lang_code = Some(Arc::from(code.as_str()));
     }
 
     Ok(Arc::new(s))
@@ -900,6 +944,10 @@ mod tests {
             fit: None,
             edge_inset_x: None,
             edge_inset_y: None,
+            quality: None,
+            quality_style: None,
+            lang_icon: None,
+            lang_code: None,
         }
     }
 

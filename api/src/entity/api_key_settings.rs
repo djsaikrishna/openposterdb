@@ -49,6 +49,10 @@ pub struct Model {
     /// Distance (percent of height, 0–50) to inset backdrop ratings from the
     /// anchored vertical edge (top or bottom). Ignored for centered positions.
     pub backdrop_edge_inset_y: i32,
+    /// How the quality overlay badge renders: `text` or `logo`.
+    pub quality_style: String,
+    /// Whether/how the main-language overlay badge renders: `off`, `flag`, `text`.
+    pub lang_icon: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

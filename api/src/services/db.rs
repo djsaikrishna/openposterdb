@@ -808,6 +808,238 @@ pub fn default_poster_fit() -> PosterFit {
     PosterFit::Native
 }
 
+// --- Quality overlay badge (issue #1) ---
+
+/// A caller-supplied media-quality tier rendered as an overlay badge. There is
+/// no quality metadata server-side, so the value is supplied per request (e.g.
+/// by the addon that knows the stream) via `?quality=`. Tiers stack —
+/// `?quality=4k,dv` renders both badges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QualityTier {
+    Uhd4k,
+    P1080,
+    P720,
+    Hdr,
+    Dv,
+}
+
+impl QualityTier {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Uhd4k => "4k",
+            Self::P1080 => "1080p",
+            Self::P720 => "720p",
+            Self::Hdr => "hdr",
+            Self::Dv => "dv",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, AppError> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "4k" | "2160p" | "uhd" => Ok(Self::Uhd4k),
+            "1080p" | "fhd" => Ok(Self::P1080),
+            "720p" | "hd" => Ok(Self::P720),
+            "hdr" | "hdr10" => Ok(Self::Hdr),
+            "dv" | "dolbyvision" | "dolby_vision" => Ok(Self::Dv),
+            _ => Err(AppError::BadRequest(format!(
+                "unknown quality tier: '{s}'. Valid tiers: 4k, 1080p, 720p, hdr, dv"
+            ))),
+        }
+    }
+
+    /// Uppercase text rendered for `quality_style=text`.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Uhd4k => "4K",
+            Self::P1080 => "1080P",
+            Self::P720 => "720P",
+            Self::Hdr => "HDR",
+            Self::Dv => "DV",
+        }
+    }
+
+    /// Single-char token for compact cache keys.
+    pub fn cache_char(&self) -> char {
+        match self {
+            Self::Uhd4k => '4',
+            Self::P1080 => '1',
+            Self::P720 => '7',
+            Self::Hdr => 'h',
+            Self::Dv => 'v',
+        }
+    }
+}
+
+/// Maximum number of quality tiers accepted in one request (bounds cache keys
+/// and badge count). There are five distinct tiers.
+pub const MAX_QUALITY_TIERS: usize = 5;
+
+/// Parse a comma-separated quality string into ordered, de-duplicated tiers.
+/// Unknown tokens are skipped (input is validated separately via
+/// `validate_quality`); empty input yields an empty vec.
+pub fn parse_quality_tiers(s: &str) -> Vec<QualityTier> {
+    let mut out: Vec<QualityTier> = Vec::new();
+    for part in s.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if let Ok(t) = QualityTier::parse(part) {
+            if !out.contains(&t) {
+                out.push(t);
+            }
+        }
+    }
+    out
+}
+
+/// Validate a comma-separated quality string: every token must be a known tier,
+/// with at most `MAX_QUALITY_TIERS`. Empty is allowed (no quality badge).
+pub fn validate_quality(s: &str) -> Result<(), AppError> {
+    if s.is_empty() {
+        return Ok(());
+    }
+    let parts: Vec<&str> = s.split(',').map(|p| p.trim()).filter(|p| !p.is_empty()).collect();
+    if parts.len() > MAX_QUALITY_TIERS {
+        return Err(AppError::BadRequest(format!(
+            "quality accepts at most {MAX_QUALITY_TIERS} tiers"
+        )));
+    }
+    for part in parts {
+        QualityTier::parse(part)?;
+    }
+    Ok(())
+}
+
+const QUALITY_STYLE_TEXT: &str = "text";
+const QUALITY_STYLE_LOGO: &str = "logo";
+
+/// How the quality overlay badge renders: a plain text chip or a brand logo
+/// image (rendered on a white plate so any logo stays legible).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QualityStyle {
+    Text,
+    Logo,
+}
+
+impl QualityStyle {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Text => QUALITY_STYLE_TEXT,
+            Self::Logo => QUALITY_STYLE_LOGO,
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, AppError> {
+        match s {
+            QUALITY_STYLE_TEXT => Ok(Self::Text),
+            QUALITY_STYLE_LOGO => Ok(Self::Logo),
+            _ => Err(AppError::BadRequest(format!(
+                "quality_style must be '{QUALITY_STYLE_TEXT}' or '{QUALITY_STYLE_LOGO}'"
+            ))),
+        }
+    }
+
+    /// Single-char token for compact cache keys.
+    pub fn cache_char(self) -> char {
+        match self {
+            Self::Text => 't',
+            Self::Logo => 'l',
+        }
+    }
+}
+
+impl_str_enum!(QualityStyle);
+
+pub fn default_quality_style() -> QualityStyle {
+    QualityStyle::Text
+}
+
+// --- Main-language overlay badge (issue #6) ---
+
+const LANG_ICON_OFF: &str = "off";
+const LANG_ICON_FLAG: &str = "flag";
+const LANG_ICON_TEXT: &str = "text";
+
+/// How the main-language overlay badge renders. `Off` (the default) shows
+/// nothing; `Flag` shows a country flag for the title's language; `Text` shows
+/// the uppercase ISO code (e.g. `EN`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LangIcon {
+    Off,
+    Flag,
+    Text,
+}
+
+impl LangIcon {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Off => LANG_ICON_OFF,
+            Self::Flag => LANG_ICON_FLAG,
+            Self::Text => LANG_ICON_TEXT,
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, AppError> {
+        match s {
+            LANG_ICON_OFF => Ok(Self::Off),
+            LANG_ICON_FLAG => Ok(Self::Flag),
+            LANG_ICON_TEXT => Ok(Self::Text),
+            _ => Err(AppError::BadRequest(format!(
+                "lang_icon must be '{LANG_ICON_OFF}', '{LANG_ICON_FLAG}', or '{LANG_ICON_TEXT}'"
+            ))),
+        }
+    }
+
+    pub fn is_off(self) -> bool {
+        self == Self::Off
+    }
+
+    /// Compact cache token; `Off` (the default) emits nothing so existing keys
+    /// stay valid.
+    pub fn cache_suffix(self) -> &'static str {
+        match self {
+            Self::Off => "",
+            Self::Flag => ".lif",
+            Self::Text => ".lit",
+        }
+    }
+}
+
+impl_str_enum!(LangIcon);
+
+pub fn default_lang_icon() -> LangIcon {
+    LangIcon::Off
+}
+
+/// Validate an explicit `lang_code` override for the language badge. Same shape
+/// as `validate_lang` (2–5 ASCII alphanumeric/hyphen).
+pub fn validate_lang_code(code: &str) -> Result<(), AppError> {
+    validate_lang(code)
+}
+
+/// Cache-key token for the quality (#1) and language (#6) overlay badges. Empty
+/// when neither is active, so default configs keep their existing cache keys (no
+/// migration). The derived title language (no override) is intentionally omitted
+/// because it is a function of the title id already present in the key; only an
+/// explicit `lang_code` override is encoded.
+pub fn overlay_cache_suffix(settings: &RenderSettings) -> String {
+    let mut out = String::new();
+    let tiers = parse_quality_tiers(&settings.quality);
+    if !tiers.is_empty() {
+        let chars: String = tiers.iter().map(|t| t.cache_char()).collect();
+        out.push_str(&format!(".q{}{}", settings.quality_style.cache_char(), chars));
+    }
+    if !settings.lang_icon.is_off() {
+        out.push_str(settings.lang_icon.cache_suffix());
+        if let Some(code) = &settings.lang_code {
+            out.push('-');
+            out.push_str(code);
+        }
+    }
+    out
+}
+
 /// Validate ratings_limit is 0–10 (one slot per available rating source).
 pub fn validate_ratings_limit(limit: i32) -> Result<(), AppError> {
     if (0..=10).contains(&limit) {
@@ -1056,6 +1288,72 @@ mod tests {
     fn validate_ratings_exclude_rejects_unknown_and_duplicate() {
         assert!(validate_ratings_exclude("bogus").is_err());
         assert!(validate_ratings_exclude("rt,rt").is_err());
+    }
+
+    #[test]
+    fn quality_tier_round_trip() {
+        for t in [QualityTier::Uhd4k, QualityTier::P1080, QualityTier::P720, QualityTier::Hdr, QualityTier::Dv] {
+            assert_eq!(QualityTier::parse(t.as_str()).unwrap(), t);
+        }
+        // Aliases parse.
+        assert_eq!(QualityTier::parse("2160p").unwrap(), QualityTier::Uhd4k);
+        assert_eq!(QualityTier::parse("DolbyVision").unwrap(), QualityTier::Dv);
+        assert!(QualityTier::parse("8k").is_err());
+    }
+
+    #[test]
+    fn parse_quality_tiers_dedupes_and_orders() {
+        let t = parse_quality_tiers("4k, dv, 4k, hdr");
+        assert_eq!(t, vec![QualityTier::Uhd4k, QualityTier::Dv, QualityTier::Hdr]);
+        assert!(parse_quality_tiers("").is_empty());
+        // Unknown tokens are skipped (validation happens separately).
+        assert_eq!(parse_quality_tiers("4k,bogus"), vec![QualityTier::Uhd4k]);
+    }
+
+    #[test]
+    fn validate_quality_rules() {
+        assert!(validate_quality("").is_ok());
+        assert!(validate_quality("4k,dv").is_ok());
+        assert!(validate_quality("8k").is_err());
+        assert!(validate_quality("4k,1080p,720p,hdr,dv,4k").is_err()); // > MAX_QUALITY_TIERS
+    }
+
+    #[test]
+    fn quality_style_and_lang_icon_round_trip() {
+        assert_eq!(QualityStyle::parse("text").unwrap(), QualityStyle::Text);
+        assert_eq!(QualityStyle::parse("logo").unwrap(), QualityStyle::Logo);
+        assert!(QualityStyle::parse("x").is_err());
+        for i in [LangIcon::Off, LangIcon::Flag, LangIcon::Text] {
+            assert_eq!(LangIcon::parse(i.as_str()).unwrap(), i);
+        }
+        assert!(LangIcon::parse("x").is_err());
+    }
+
+    #[test]
+    fn overlay_cache_suffix_empty_by_default() {
+        let s = RenderSettings::default();
+        assert_eq!(overlay_cache_suffix(&s), "", "default config must keep existing cache keys");
+    }
+
+    #[test]
+    fn overlay_cache_suffix_encodes_quality_and_language() {
+        let mut s = RenderSettings::default();
+        s.quality = Arc::from("4k,dv");
+        s.quality_style = QualityStyle::Logo;
+        s.lang_icon = LangIcon::Flag;
+        let suffix = overlay_cache_suffix(&s);
+        assert!(suffix.contains(".ql4v"), "quality token missing: {suffix}");
+        assert!(suffix.contains(".lif"), "lang token missing: {suffix}");
+        // An explicit lang_code override is encoded; the derived one is not.
+        let mut s2 = s.clone();
+        s2.lang_code = Some(Arc::from("ja"));
+        assert!(overlay_cache_suffix(&s2).contains(".lif-ja"));
+        // Text style + text lang produce distinct tokens.
+        let mut s3 = RenderSettings::default();
+        s3.quality = Arc::from("4k");
+        s3.lang_icon = LangIcon::Text;
+        assert!(overlay_cache_suffix(&s3).contains(".qt4"));
+        assert!(overlay_cache_suffix(&s3).contains(".lit"));
     }
 
     #[test]
@@ -2020,6 +2318,8 @@ pub struct UpsertApiKeySettings<'a> {
     pub episode_badge_background: &'a str,
     pub backdrop_edge_inset_x: i32,
     pub backdrop_edge_inset_y: i32,
+    pub quality_style: &'a str,
+    pub lang_icon: &'a str,
 }
 
 pub async fn upsert_api_key_settings(
@@ -2068,6 +2368,8 @@ pub async fn upsert_api_key_settings(
         episode_badge_background: Set(params.episode_badge_background.to_string()),
         backdrop_edge_inset_x: Set(params.backdrop_edge_inset_x),
         backdrop_edge_inset_y: Set(params.backdrop_edge_inset_y),
+        quality_style: Set(params.quality_style.to_string()),
+        lang_icon: Set(params.lang_icon.to_string()),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -2113,6 +2415,8 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::EpisodeBadgeBackground,
                     api_key_settings::Column::BackdropEdgeInsetX,
                     api_key_settings::Column::BackdropEdgeInsetY,
+                    api_key_settings::Column::QualityStyle,
+                    api_key_settings::Column::LangIcon,
                 ])
                 .to_owned(),
         )
@@ -2185,6 +2489,18 @@ pub struct RenderSettings {
     pub logo_badge_background: BadgeBackground,
     pub backdrop_badge_background: BadgeBackground,
     pub episode_badge_background: BadgeBackground,
+    /// Comma-separated, caller-supplied quality tiers for the quality overlay
+    /// badge (e.g. `"4k,dv"`). Empty = no quality badge. Transient: set only
+    /// from the `?quality=` query param, never persisted.
+    pub quality: Arc<str>,
+    /// How the quality badge renders (text chip vs brand logo). Persisted.
+    pub quality_style: QualityStyle,
+    /// Whether/how the main-language badge renders (off/flag/text). Persisted.
+    pub lang_icon: LangIcon,
+    /// Explicit language-code override for the language badge. Transient: set
+    /// only from the `?lang_code=` query param. When `None`, the title's
+    /// resolved `original_language` is used.
+    pub lang_code: Option<Arc<str>>,
 }
 
 impl RenderSettings {
@@ -2250,6 +2566,10 @@ impl Default for RenderSettings {
             logo_badge_background: default_badge_background(),
             backdrop_badge_background: default_badge_background(),
             episode_badge_background: default_badge_background(),
+            quality: Arc::from(""),
+            quality_style: default_quality_style(),
+            lang_icon: default_lang_icon(),
+            lang_code: None,
         }
     }
 }
@@ -2338,6 +2658,12 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         logo_badge_background: global_or(globals, "logo_badge_background", BadgeBackground::parse, defaults.logo_badge_background),
         backdrop_badge_background: global_or(globals, "backdrop_badge_background", BadgeBackground::parse, defaults.backdrop_badge_background),
         episode_badge_background: global_or(globals, "episode_badge_background", BadgeBackground::parse, defaults.episode_badge_background),
+        // Quality tiers + the lang-code override are per-request only — never a
+        // global default.
+        quality: Arc::from(""),
+        quality_style: global_or(globals, "quality_style", QualityStyle::parse, defaults.quality_style),
+        lang_icon: global_or(globals, "lang_icon", LangIcon::parse, defaults.lang_icon),
+        lang_code: None,
     }
 }
 
@@ -2391,6 +2717,10 @@ pub async fn get_effective_render_settings(
                 logo_badge_background: parse_setting_or_default(&s.logo_badge_background, "logo_badge_background", BadgeBackground::parse, default_badge_background()),
                 backdrop_badge_background: parse_setting_or_default(&s.backdrop_badge_background, "backdrop_badge_background", BadgeBackground::parse, default_badge_background()),
                 episode_badge_background: parse_setting_or_default(&s.episode_badge_background, "episode_badge_background", BadgeBackground::parse, default_badge_background()),
+                quality: Arc::from(""),
+                quality_style: parse_setting_or_default(&s.quality_style, "quality_style", QualityStyle::parse, default_quality_style()),
+                lang_icon: parse_setting_or_default(&s.lang_icon, "lang_icon", LangIcon::parse, default_lang_icon()),
+                lang_code: None,
             };
         }
         Ok(None) => {} // no per-key override, fall through

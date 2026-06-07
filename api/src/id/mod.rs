@@ -33,6 +33,10 @@ pub struct ResolvedId {
     pub poster_path: Option<String>,
     pub release_date: Option<String>,
     pub episode: Option<EpisodeInfo>,
+    /// The title's main language (TMDB `original_language`, ISO 639-1). Used by
+    /// the language overlay badge (issue #6). For episodes this is inherited
+    /// from the parent show and may be `None` when the show wasn't fetched.
+    pub original_language: Option<String>,
 }
 
 pub fn format_tmdb_id_value(tmdb_id: u64, media_type: &MediaType, episode: Option<&EpisodeInfo>) -> String {
@@ -89,6 +93,7 @@ struct FindEntry {
     poster_path: Option<String>,
     release_date: Option<String>,
     first_air_date: Option<String>,
+    original_language: Option<String>,
     #[serde(default)]
     popularity: f64,
 }
@@ -164,6 +169,7 @@ async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
                 poster_path: movie.poster_path.clone(),
                 release_date: movie.release_date.clone(),
                 episode: None,
+                original_language: movie.original_language.clone(),
             });
         }
     }
@@ -176,6 +182,7 @@ async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             poster_path: tv.poster_path.clone(),
             release_date: tv.first_air_date.clone(),
             episode: None,
+            original_language: tv.original_language.clone(),
         });
     }
     Err(AppError::IdNotFound(format!("{imdb_id} (not found on TMDB)")))
@@ -203,6 +210,7 @@ async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, A
         poster_path: Option<String>,
         release_date: Option<String>,
         first_air_date: Option<String>,
+        original_language: Option<String>,
         #[serde(default)]
         external_ids: Option<ExternalIds>,
     }
@@ -239,6 +247,7 @@ async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, A
         poster_path: details.poster_path,
         release_date,
         episode: None,
+        original_language: details.original_language,
     })
 }
 
@@ -296,15 +305,21 @@ async fn resolve_episode_details(
     let tvdb_id = details.external_ids.as_ref().and_then(|e| e.tvdb_id);
     let still_path = hint_still_path.or(details.still_path.clone());
 
-    // Use still_path as poster_path; fallback to series poster if no still
+    // Use still_path as poster_path; fallback to series poster if no still.
+    // When we fetch the show for the poster fallback we also pick up its
+    // `original_language` for the language badge; episodes have no language of
+    // their own, so it's inherited from the show.
+    let mut original_language: Option<String> = None;
     let poster_path = if still_path.is_some() {
         still_path.clone()
     } else {
         #[derive(Deserialize)]
         struct ShowInfo {
             poster_path: Option<String>,
+            original_language: Option<String>,
         }
         let show: ShowInfo = tmdb.get(&format!("/tv/{show_tmdb_id}"), &[]).await?;
+        original_language = show.original_language;
         show.poster_path
     };
 
@@ -321,6 +336,7 @@ async fn resolve_episode_details(
             episode_number: episode,
             still_path,
         }),
+        original_language,
     })
 }
 
@@ -659,6 +675,7 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             external_ids: Option<TvExternalIds>,
             poster_path: Option<String>,
             first_air_date: Option<String>,
+            original_language: Option<String>,
         }
         #[derive(Deserialize)]
         struct TvExternalIds {
@@ -680,6 +697,7 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             poster_path: details.poster_path.or_else(|| tv.poster_path.clone()),
             release_date: details.first_air_date,
             episode: None,
+            original_language: details.original_language.or_else(|| tv.original_language.clone()),
         });
     }
     if let Some(movie) = result.movie_results.first() {
@@ -688,6 +706,7 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             imdb_id: Option<String>,
             poster_path: Option<String>,
             release_date: Option<String>,
+            original_language: Option<String>,
         }
         let details: MovieDetails = tmdb
             .get(&format!("/movie/{}", movie.id), &[])
@@ -700,6 +719,7 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             poster_path: details.poster_path.or_else(|| movie.poster_path.clone()),
             release_date: details.release_date,
             episode: None,
+            original_language: details.original_language.or_else(|| movie.original_language.clone()),
         });
     }
     Err(AppError::IdNotFound(format!("{tvdb_id} (not found on TMDB via TVDB lookup)")))

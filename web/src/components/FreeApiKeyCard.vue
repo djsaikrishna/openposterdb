@@ -17,6 +17,9 @@ import {
   IMAGE_SOURCE_LABELS,
   POSITION_LABELS,
   POSTER_FIT_LABELS,
+  QUALITY_TIERS,
+  QUALITY_STYLE_LABELS,
+  LANG_ICON_LABELS,
 } from '@/lib/constants'
 import RatingsOrderList from '@/components/RatingsOrderList.vue'
 import { Button } from '@/components/ui/button'
@@ -75,6 +78,25 @@ const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 // `ratings_order` override — the server's order once loaded, else the frontend default.
 const baselineOrder = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 const blur = ref('default')
+// Quality + main-language overlay badges. These are global (not per image type),
+// like `lang`/`image_source`. The selected quality tiers and the language-code
+// override are per-request only (no persisted setting), so they have no server
+// default to reflect; `quality_style`/`lang_icon` use the 'default' sentinel and
+// fall back to the server's persisted defaults.
+const qualityTiers = ref<string[]>([])
+const qualityStyle = ref('default')
+const langIcon = ref('default')
+const langCode = ref('')
+function isQualityTier(key: string): boolean {
+  return qualityTiers.value.includes(key)
+}
+function toggleQualityTier(key: string, checked: boolean) {
+  const set = new Set(qualityTiers.value)
+  if (checked) set.add(key)
+  else set.delete(key)
+  // Keep canonical tier order so the emitted `quality=` value is stable.
+  qualityTiers.value = QUALITY_TIERS.map(t => t.key).filter(k => set.has(k))
+}
 const ratingsOrderChanged = computed(
   () => ratingsOrderList.value.join(',') !== baselineOrder.value.join(','),
 )
@@ -187,6 +209,8 @@ const fitDefaultLabel = computed(() => annotate('Fit', defaults.value?.poster_fi
 const blurDefaultLabel = computed(() =>
   defaults.value ? `Blur: default (${defaults.value.episode_blur ? 'Yes' : 'No'})` : 'Blur: default',
 )
+const qualityStyleDefaultLabel = computed(() => annotate('Quality style', defaults.value?.quality_style, QUALITY_STYLE_LABELS))
+const langIconDefaultLabel = computed(() => annotate('Language icon', defaults.value?.lang_icon, LANG_ICON_LABELS))
 
 // Switching image type re-applies that type's own defaults: each type carries
 // its own server defaults (poster_badge_style vs logo_badge_style, etc.), so the
@@ -271,6 +295,16 @@ const queryString = computed(() => {
     if (ey !== null) params.set('edge_inset_y', ey)
   }
   if (imageType.value === 'episode' && blur.value !== 'default') params.set('blur', blur.value)
+  // Overlay badges (global, every image type). Quality tiers are stackable and
+  // sent only when at least one is selected. `quality_style`/`lang_icon` are
+  // emitted only when the user overrides the server default. `lang_code` is an
+  // ISO 639-1 override that's meaningful only when a language icon is shown.
+  if (qualityTiers.value.length) params.set('quality', qualityTiers.value.join(','))
+  if (qualityStyle.value !== 'default') params.set('quality_style', qualityStyle.value)
+  const langIconActive = langIcon.value === 'flag' || langIcon.value === 'text'
+  if (langIcon.value !== 'default' && langIcon.value !== 'off') params.set('lang_icon', langIcon.value)
+  const langCodeVal = langCode.value.trim()
+  if (langCodeVal && langIconActive) params.set('lang_code', langCodeVal)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
 })
@@ -439,6 +473,35 @@ async function handleFetch() {
               <SelectItem value="f">Fanart.tv</SelectItem>
             </SelectContent>
           </Select>
+          <Select v-model="qualityStyle">
+            <SelectTrigger id="free-quality-style" aria-label="Quality badge style" class="bg-background">
+              <SelectValue placeholder="Quality style: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default" :key="qualityStyleDefaultLabel">{{ qualityStyleDefaultLabel }}</SelectItem>
+              <SelectItem value="text">Text</SelectItem>
+              <SelectItem value="logo">Logo</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="langIcon">
+            <SelectTrigger id="free-lang-icon" aria-label="Main-language icon" class="bg-background">
+              <SelectValue placeholder="Language icon: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default" :key="langIconDefaultLabel">{{ langIconDefaultLabel }}</SelectItem>
+              <SelectItem value="off">Off</SelectItem>
+              <SelectItem value="flag">Flag</SelectItem>
+              <SelectItem value="text">Text</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            id="free-lang-code"
+            v-model="langCode"
+            type="text"
+            placeholder="Language code (e.g. ja)"
+            aria-label="Main-language ISO 639-1 override"
+            class="bg-background min-w-0"
+          />
           <template v-if="imageType === 'poster'">
             <Select v-model="textless">
               <SelectTrigger id="free-textless" aria-label="Textless" class="bg-background">
@@ -570,6 +633,30 @@ async function handleFetch() {
                   :style="{ backgroundColor: source.color }"
                 ></span>
                 <span>{{ source.label }}</span>
+              </Label>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-1 flex flex-col items-center">
+          <p class="text-xs text-muted-foreground">Quality badges</p>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 max-w-sm w-full">
+            <div
+              v-for="tier in QUALITY_TIERS"
+              :key="tier.key"
+              class="flex items-center gap-1.5 text-left"
+            >
+              <Checkbox
+                :id="`free-quality-${tier.key}`"
+                :model-value="isQualityTier(tier.key)"
+                :aria-label="`Quality ${tier.label}`"
+                class="bg-background shrink-0"
+                @update:model-value="(v) => toggleQualityTier(tier.key, !!v)"
+              />
+              <Label
+                :for="`free-quality-${tier.key}`"
+                class="text-xs font-normal leading-snug cursor-pointer min-w-0"
+              >
+                {{ tier.label }}
               </Label>
             </div>
           </div>

@@ -28,6 +28,9 @@ const MAX_VERT_BADGES_PER_ROW: usize = 5;
 pub struct ImageParams<'a> {
     pub poster_path: &'a str,
     pub badges: &'a [RatingBadge],
+    /// Non-rating overlay badges (quality tiers, language flag/code) appended
+    /// after the rating badges.
+    pub overlay_badges: &'a [badge::OverlayBadge],
     pub tmdb: &'a TmdbClient,
 
     pub font: &'a FontArc,
@@ -61,6 +64,7 @@ pub async fn generate_poster(params: ImageParams<'_>) -> Result<Vec<u8>, AppErro
     let ImageParams {
         poster_path,
         badges,
+        overlay_badges,
         tmdb,
         font,
         quality,
@@ -130,9 +134,10 @@ pub async fn generate_poster(params: ImageParams<'_>) -> Result<Vec<u8>, AppErro
 
     // Move CPU-bound image processing to a blocking thread
     let badges = badges.to_vec();
+    let overlay_badges = overlay_badges.to_vec();
     let font = font.clone();
     let buf = tokio::task::spawn_blocking(move || {
-        render_poster_sync(&poster_bytes, &badges, &font, quality, poster_position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, poster_badge_split, poster_fit)
+        render_poster_sync(&poster_bytes, &badges, &overlay_badges, &font, quality, poster_position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, poster_badge_split, poster_fit)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -256,6 +261,27 @@ fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], p
     }
 }
 
+/// Render the non-rating overlay badges (quality / language) into images sized
+/// to match the rating badges' orientation, ready to append to the badge list.
+fn render_overlay_images(
+    overlay_badges: &[badge::OverlayBadge],
+    font: &FontArc,
+    vertical: bool,
+    appearance: BadgeAppearance,
+    badge_scale: f32,
+) -> Vec<RgbaImage> {
+    overlay_badges
+        .iter()
+        .map(|b| {
+            if vertical {
+                badge::render_overlay_badge_vertical(b, font, appearance, badge_scale)
+            } else {
+                badge::render_overlay_badge(b, font, appearance, badge_scale)
+            }
+        })
+        .collect()
+}
+
 /// Maximum total pixels allowed for a decoded source image (width * height).
 /// 8192x8192 = 67M pixels (~256 MB as RGBA) is generous for poster/backdrop art
 /// while preventing OOM from crafted images with extreme dimensions.
@@ -340,6 +366,7 @@ fn fit_poster(base: DynamicImage, target_width: u32, fit: PosterFit) -> RgbaImag
 pub fn render_poster_sync(
     poster_bytes: &[u8],
     badges: &[RatingBadge],
+    overlay_badges: &[badge::OverlayBadge],
     font: &FontArc,
     quality: u8,
     poster_position: BadgePosition,
@@ -362,12 +389,14 @@ pub fn render_poster_sync(
     // overlaying badges, so badges anchor to the final frame corners.
     let mut canvas: RgbaImage = fit_poster(base, target_width, poster_fit);
 
-    if !badges.is_empty() {
-        let badge_images: Vec<RgbaImage> = if badge_style.is_vertical() {
+    if !badges.is_empty() || !overlay_badges.is_empty() {
+        let mut badge_images: Vec<RgbaImage> = if badge_style.is_vertical() {
             badges.iter().map(|b| badge::render_vertical_badge(b, font, label_style, badge_appearance, badge_scale)).collect()
         } else {
             badge::render_badges_uniform(badges, font, label_style, badge_appearance, badge_scale)
         };
+        // Quality / language overlay badges are appended after the ratings.
+        badge_images.extend(render_overlay_images(overlay_badges, font, badge_style.is_vertical(), badge_appearance, badge_scale));
 
         let max_per_row = match badge_size {
             BadgeSize::Large | BadgeSize::ExtraLarge => {
@@ -429,6 +458,7 @@ const LOGO_SPACING_BELOW: u32 = 15;
 pub fn render_logo_sync(
     logo_bytes: &[u8],
     badges: &[RatingBadge],
+    overlay_badges: &[badge::OverlayBadge],
     font: &FontArc,
     badge_style: BadgeStyle,
     label_style: LabelStyle,
@@ -451,7 +481,7 @@ pub fn render_logo_sync(
 
     let logo_img = base.to_rgba8();
 
-    if badges.is_empty() {
+    if badges.is_empty() && overlay_badges.is_empty() {
         // No badges — just encode the logo as PNG
         let mut buf = Vec::new();
         let encoder = image::codecs::png::PngEncoder::new(&mut buf);
@@ -471,10 +501,11 @@ pub fn render_logo_sync(
 
     if badge_style.is_vertical() {
         // Vertical badge shapes arranged in rows below the logo
-        let badge_images: Vec<RgbaImage> = badges
+        let mut badge_images: Vec<RgbaImage> = badges
                 .iter()
                 .map(|b| badge::render_vertical_badge(b, font, label_style, badge_appearance, badge_scale))
                 .collect();
+            badge_images.extend(render_overlay_images(overlay_badges, font, true, badge_appearance, badge_scale));
 
             let rows: Vec<&[RgbaImage]> = badge_images.chunks(MAX_VERT_BADGES_PER_ROW).collect();
             let max_badge_height: u32 = badge_images.iter().map(|b| b.height()).max().unwrap_or(0);
@@ -526,7 +557,8 @@ pub fn render_logo_sync(
             Ok(buf)
     } else {
         // Horizontal badge images (default) — uniform widths, arranged in rows below the logo
-            let badge_images = badge::render_badges_uniform(badges, font, label_style, badge_appearance, badge_scale);
+            let mut badge_images = badge::render_badges_uniform(badges, font, label_style, badge_appearance, badge_scale);
+            badge_images.extend(render_overlay_images(overlay_badges, font, false, badge_appearance, badge_scale));
 
             let rows: Vec<&[RgbaImage]> = badge_images.chunks(LOGO_MAX_BADGES_PER_ROW).collect();
             let badge_height = badge_images[0].height();
@@ -584,6 +616,7 @@ pub fn render_logo_sync(
 pub async fn generate_logo(
     logo_bytes: Vec<u8>,
     badges: Vec<RatingBadge>,
+    overlay_badges: Vec<badge::OverlayBadge>,
     font: FontArc,
     badge_style: BadgeStyle,
     label_style: LabelStyle,
@@ -600,7 +633,7 @@ pub async fn generate_logo(
     tracing::debug!("logo render started");
     let start = std::time::Instant::now();
 
-    let buf = tokio::task::spawn_blocking(move || render_logo_sync(&logo_bytes, &badges, &font, badge_style, label_style, badge_appearance, target_width, badge_scale))
+    let buf = tokio::task::spawn_blocking(move || render_logo_sync(&logo_bytes, &badges, &overlay_badges, &font, badge_style, label_style, badge_appearance, target_width, badge_scale))
         .await
         .map_err(|e| AppError::Other(e.to_string()))??;
 
@@ -611,6 +644,7 @@ pub async fn generate_logo(
 pub fn render_backdrop_sync(
     backdrop_bytes: &[u8],
     badges: &[RatingBadge],
+    overlay_badges: &[badge::OverlayBadge],
     font: &FontArc,
     quality: u8,
     position: BadgePosition,
@@ -639,12 +673,13 @@ pub fn render_backdrop_sync(
 
     let mut canvas: RgbaImage = base.to_rgba8();
 
-    if !badges.is_empty() {
-        let badge_images: Vec<RgbaImage> = if badge_style.is_vertical() {
+    if !badges.is_empty() || !overlay_badges.is_empty() {
+        let mut badge_images: Vec<RgbaImage> = if badge_style.is_vertical() {
             badges.iter().map(|b| badge::render_vertical_badge(b, font, label_style, badge_appearance, badge_scale)).collect()
         } else {
             badge::render_badges_uniform(badges, font, label_style, badge_appearance, badge_scale)
         };
+        badge_images.extend(render_overlay_images(overlay_badges, font, badge_style.is_vertical(), badge_appearance, badge_scale));
 
         // Edge insets are a percentage of the canvas dimension, so they stay
         // proportional across image sizes (small/medium/large). The overlay
@@ -674,6 +709,7 @@ pub fn render_backdrop_sync(
 pub async fn generate_backdrop(
     backdrop_bytes: Vec<u8>,
     badges: Vec<RatingBadge>,
+    overlay_badges: Vec<badge::OverlayBadge>,
     font: FontArc,
     quality: u8,
     position: BadgePosition,
@@ -696,7 +732,7 @@ pub async fn generate_backdrop(
     tracing::debug!("backdrop render started");
     let start = std::time::Instant::now();
 
-    let buf = tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, edge_inset_x, edge_inset_y))
+    let buf = tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &overlay_badges, &font, quality, position, badge_style, label_style, badge_appearance, badge_direction, target_width, badge_scale, badge_size, edge_inset_x, edge_inset_y))
         .await
         .map_err(|e| AppError::Other(e.to_string()))??;
 
@@ -709,6 +745,7 @@ pub async fn generate_backdrop(
 pub fn render_episode_sync(
     image_bytes: &[u8],
     badges: &[RatingBadge],
+    overlay_badges: &[badge::OverlayBadge],
     font: &FontArc,
     quality: u8,
     position: BadgePosition,
@@ -747,12 +784,13 @@ pub fn render_episode_sync(
         canvas = image::imageops::resize(&small, w, h, image::imageops::FilterType::Triangle);
     }
 
-    if !badges.is_empty() {
-        let badge_images: Vec<RgbaImage> = if badge_style.is_vertical() {
+    if !badges.is_empty() || !overlay_badges.is_empty() {
+        let mut badge_images: Vec<RgbaImage> = if badge_style.is_vertical() {
             badges.iter().map(|b| badge::render_vertical_badge(b, font, label_style, badge_appearance, badge_scale)).collect()
         } else {
             badge::render_badges_uniform(badges, font, label_style, badge_appearance, badge_scale)
         };
+        badge_images.extend(render_overlay_images(overlay_badges, font, badge_style.is_vertical(), badge_appearance, badge_scale));
 
         if badge_direction.is_vertical() {
             overlay_vertical_stack(&mut canvas, &badge_images, position, badge_scale, BADGE_SIDE_MARGIN, 0, 0);
@@ -798,7 +836,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = render_poster_sync(&png_bytes, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &[], &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert!(!result.is_empty());
         // Should be valid JPEG
         assert_eq!(result[0], 0xFF);
@@ -841,7 +879,7 @@ mod tests {
             },
         ];
 
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -850,7 +888,7 @@ mod tests {
     #[test]
     fn render_poster_invalid_image_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(b"not an image", &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native);
+        let result = render_poster_sync(b"not an image", &[], &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native);
         assert!(result.is_err());
     }
 
@@ -874,7 +912,7 @@ mod tests {
     fn render_logo_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(200, 80);
-        let result = render_logo_sync(&png, &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &[], &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -889,7 +927,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let result = render_logo_sync(&png, &badges, &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &badges, &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -910,13 +948,13 @@ mod tests {
 
         // A pill ignores the vertical style and always renders horizontally, so
         // vertical+pill and horizontal+pill produce identical output.
-        let v_pill = render_logo_sync(&png, &badges, &font, BadgeStyle::Vertical, LabelStyle::Official, pill, 500, 1.0).unwrap();
-        let h_pill = render_logo_sync(&png, &badges, &font, BadgeStyle::Horizontal, LabelStyle::Official, pill, 500, 1.0).unwrap();
+        let v_pill = render_logo_sync(&png, &badges, &[], &font, BadgeStyle::Vertical, LabelStyle::Official, pill, 500, 1.0).unwrap();
+        let h_pill = render_logo_sync(&png, &badges, &[], &font, BadgeStyle::Horizontal, LabelStyle::Official, pill, 500, 1.0).unwrap();
         assert_eq!(v_pill, h_pill, "pill should render horizontally even when the style is vertical");
 
         // Rounded badges still honour the style, so the two layouts differ.
-        let v_round = render_logo_sync(&png, &badges, &font, BadgeStyle::Vertical, LabelStyle::Official, rounded, 500, 1.0).unwrap();
-        let h_round = render_logo_sync(&png, &badges, &font, BadgeStyle::Horizontal, LabelStyle::Official, rounded, 500, 1.0).unwrap();
+        let v_round = render_logo_sync(&png, &badges, &[], &font, BadgeStyle::Vertical, LabelStyle::Official, rounded, 500, 1.0).unwrap();
+        let h_round = render_logo_sync(&png, &badges, &[], &font, BadgeStyle::Horizontal, LabelStyle::Official, rounded, 500, 1.0).unwrap();
         assert_ne!(v_round, h_round, "rounded badges should still differ between vertical and horizontal styles");
     }
 
@@ -925,7 +963,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Create a logo wider than TARGET_WIDTH (500)
         let png = test_png(1000, 200);
-        let result = render_logo_sync(&png, &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &[], &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0).unwrap();
         assert!(!result.is_empty());
         // Verify the output is valid PNG and was produced (implicitly downscaled)
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
@@ -934,7 +972,7 @@ mod tests {
     #[test]
     fn render_logo_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_logo_sync(b"not an image", &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0);
+        let result = render_logo_sync(b"not an image", &[], &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 500, 1.0);
         assert!(result.is_err());
     }
 
@@ -942,7 +980,7 @@ mod tests {
     fn render_backdrop_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(640, 360);
-        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &[], &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         // Backdrop outputs JPEG
         assert_eq!(result[0], 0xFF);
@@ -959,7 +997,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -970,7 +1008,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Create a backdrop wider than TARGET_WIDTH (1280)
         let png = test_png(2560, 1440);
-        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &[], &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -979,7 +1017,7 @@ mod tests {
     #[test]
     fn render_backdrop_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_backdrop_sync(b"not an image", &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0);
+        let result = render_backdrop_sync(b"not an image", &[], &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0);
         assert!(result.is_err());
     }
 
@@ -993,7 +1031,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1011,7 +1049,7 @@ mod tests {
             RatingBadge { source: RatingSource::RtAudience, value: "80%".to_string() },
         ];
         // Large + Horizontal style — all badges in a single row on wide backdrop
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 1.0, BadgeSize::Large, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 1.0, BadgeSize::Large, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1026,7 +1064,7 @@ mod tests {
         let badges = vec![
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::BottomLeft, BadgeStyle::Vertical, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &[], &font, 85, BadgePosition::BottomLeft, BadgeStyle::Vertical, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1043,7 +1081,7 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
         let render = |pos: BadgePosition, x: i32, y: i32| {
-            render_backdrop_sync(&png, &badges, &font, 85, pos, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, x, y).unwrap()
+            render_backdrop_sync(&png, &badges, &[], &font, 85, pos, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, x, y).unwrap()
         };
 
         // TopRight anchors to both a horizontal and vertical edge, so both insets
@@ -1068,7 +1106,7 @@ mod tests {
     fn render_episode_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(780, 439);
-        let result = render_episode_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        let result = render_episode_sync(&png, &[], &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1084,7 +1122,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let result = render_episode_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        let result = render_episode_sync(&png, &badges, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1099,7 +1137,7 @@ mod tests {
         let badges = vec![
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
         ];
-        let result = render_episode_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, true).unwrap();
+        let result = render_episode_sync(&png, &badges, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, true).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1109,7 +1147,7 @@ mod tests {
     fn render_episode_downscales_wide_image() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(1920, 1080);
-        let result = render_episode_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        let result = render_episode_sync(&png, &[], &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1118,7 +1156,7 @@ mod tests {
     #[test]
     fn render_episode_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_episode_sync(b"not an image", &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false);
+        let result = render_episode_sync(b"not an image", &[], &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false);
         assert!(result.is_err());
     }
 
@@ -1134,7 +1172,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::TopCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::TopCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -1153,7 +1191,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::Left, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::Left, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -1170,7 +1208,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::Right, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::Right, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -1185,7 +1223,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -1201,17 +1239,17 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
         // vertical direction at bottom-center
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // vertical direction at top-left corner
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::TopLeft, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::TopLeft, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // vertical direction at bottom-right corner
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::BottomRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -1226,7 +1264,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let result = render_logo_sync(&png, &badges, &font, BadgeStyle::Horizontal, LabelStyle::Icon, BadgeAppearance::default(), 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &badges, &[], &font, BadgeStyle::Horizontal, LabelStyle::Icon, BadgeAppearance::default(), 500, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -1241,7 +1279,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Icon, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1258,7 +1296,7 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
             RatingBadge { source: RatingSource::RtAudience, value: "45%".to_string() },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -1273,7 +1311,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let result = render_logo_sync(&png, &badges, &font, BadgeStyle::Horizontal, LabelStyle::Official, BadgeAppearance::default(), 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &badges, &[], &font, BadgeStyle::Horizontal, LabelStyle::Official, BadgeAppearance::default(), 500, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -1289,7 +1327,7 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
             RatingBadge { source: RatingSource::RtAudience, value: "40%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeAppearance::default(), BadgeDirection::Vertical, 1280, 1.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1310,6 +1348,7 @@ mod tests {
             poster_bytes_override: Some(png),
             poster_path: "",
             badges: &[],
+            overlay_badges: &[],
             tmdb: &tmdb,
             font: &font,
             quality: 85,
@@ -1348,6 +1387,7 @@ mod tests {
             poster_bytes_override: Some(png),
             poster_path: "",
             badges: &[],
+            overlay_badges: &[],
             tmdb: &tmdb,
             font: &font,
             quality: 85,
@@ -1380,7 +1420,7 @@ mod tests {
         let png = test_png(200, 80);
         let sem = Arc::new(Semaphore::new(1));
 
-        let result = generate_logo(png, vec![], font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), sem.clone(), 500, 1.0).await;
+        let result = generate_logo(png, vec![], vec![], font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), sem.clone(), 500, 1.0).await;
         assert!(result.is_ok());
         assert_eq!(sem.available_permits(), 1);
     }
@@ -1392,7 +1432,7 @@ mod tests {
         let sem = Arc::new(Semaphore::new(1));
         sem.close();
 
-        let result = generate_logo(png, vec![], font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), sem, 500, 1.0).await;
+        let result = generate_logo(png, vec![], vec![], font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), sem, 500, 1.0).await;
         assert!(result.is_err());
     }
 
@@ -1402,7 +1442,7 @@ mod tests {
         let png = test_png(640, 360);
         let sem = Arc::new(Semaphore::new(1));
 
-        let result = generate_backdrop(png, vec![], font, 85, BadgePosition::TopRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, sem.clone(), 1280, 1.0, BadgeSize::Medium, 0, 0).await;
+        let result = generate_backdrop(png, vec![], vec![], font, 85, BadgePosition::TopRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, sem.clone(), 1280, 1.0, BadgeSize::Medium, 0, 0).await;
         assert!(result.is_ok());
         assert_eq!(sem.available_permits(), 1);
     }
@@ -1414,7 +1454,7 @@ mod tests {
         let sem = Arc::new(Semaphore::new(1));
         sem.close();
 
-        let result = generate_backdrop(png, vec![], font, 85, BadgePosition::TopRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, sem, 1280, 1.0, BadgeSize::Medium, 0, 0).await;
+        let result = generate_backdrop(png, vec![], vec![], font, 85, BadgePosition::TopRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, sem, 1280, 1.0, BadgeSize::Medium, 0, 0).await;
         assert!(result.is_err());
     }
 
@@ -1432,7 +1472,7 @@ mod tests {
 
         // Spawn a render that should block waiting for the permit
         let handle = tokio::spawn(async move {
-            generate_logo(png, vec![], font2, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), sem2, 500, 1.0).await
+            generate_logo(png, vec![], vec![], font2, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), sem2, 500, 1.0).await
         });
 
         // Give the task a moment to start and block
@@ -1451,7 +1491,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(500, 750);
         // Render at large size (1280 width, ~2.2x badge scale)
-        let result = render_poster_sync(&png, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 2.2, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png, &[], &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 2.2, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1469,7 +1509,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
-        let result = render_poster_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 2.2, BadgeSize::Medium, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 1280, 2.2, BadgeSize::Medium, false, PosterFit::Native).unwrap();
         let img = image::load_from_memory(&result).unwrap();
         assert_eq!(img.width(), 1280);
     }
@@ -1485,12 +1525,12 @@ mod tests {
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
         // Large badge size with horizontal style — should use max 2 per row
-        let result = render_poster_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Large, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Large, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // Extra-large badge size with vertical style — should use max 4 per row
-        let result = render_poster_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::ExtraLarge, false, PosterFit::Native).unwrap();
+        let result = render_poster_sync(&png, &badges, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal, 500, 1.0, BadgeSize::ExtraLarge, false, PosterFit::Native).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -1530,7 +1570,7 @@ mod tests {
     #[test]
     fn badge_position_top_center_places_badges_in_top_region() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &[], &font, 85,
             BadgePosition::TopCenter, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
@@ -1542,7 +1582,7 @@ mod tests {
     #[test]
     fn badge_position_bottom_center_places_badges_in_bottom_region() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &[], &font, 85,
             BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
@@ -1554,7 +1594,7 @@ mod tests {
     #[test]
     fn badge_position_left_places_badges_on_left_side() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &[], &font, 85,
             BadgePosition::Left, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
@@ -1566,7 +1606,7 @@ mod tests {
     #[test]
     fn badge_position_right_places_badges_on_right_side() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &[], &font, 85,
             BadgePosition::Right, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
@@ -1578,7 +1618,7 @@ mod tests {
     #[test]
     fn badge_position_top_left_places_badges_in_top_left_quadrant() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &[], &font, 85,
             BadgePosition::TopLeft, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
@@ -1590,7 +1630,7 @@ mod tests {
     #[test]
     fn badge_position_bottom_right_places_badges_in_bottom_right_quadrant() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &[], &font, 85,
             BadgePosition::BottomRight, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
@@ -1631,7 +1671,7 @@ mod tests {
     fn split_horizontal_places_badges_top_and_bottom() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Horizontal rows at bottom-center, split on → half top, half bottom.
-        let result = render_poster_sync(&test_png(500, 750), &split_test_badges(), &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &split_test_badges(), &[], &font, 85,
             BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, true, PosterFit::Native).unwrap();
@@ -1640,7 +1680,7 @@ mod tests {
         assert!(bottom > 0, "split: expected badge pixels in the bottom half, got {bottom}");
 
         // Without split, the same config keeps every badge in the bottom half.
-        let unsplit = render_poster_sync(&test_png(500, 750), &split_test_badges(), &font, 85,
+        let unsplit = render_poster_sync(&test_png(500, 750), &split_test_badges(), &[], &font, 85,
             BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, false, PosterFit::Native).unwrap();
@@ -1652,7 +1692,7 @@ mod tests {
     fn split_vertical_places_badges_left_and_right() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Vertical column, split on → half left, half right.
-        let result = render_poster_sync(&test_png(500, 750), &split_test_badges(), &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &split_test_badges(), &[], &font, 85,
             BadgePosition::Left, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium, true, PosterFit::Native).unwrap();
@@ -1669,7 +1709,7 @@ mod tests {
             value: "8.5".to_string(),
         }];
         // Split requested but only one badge → behaves like no split (bottom only).
-        let result = render_poster_sync(&test_png(500, 750), &badges, &font, 85,
+        let result = render_poster_sync(&test_png(500, 750), &badges, &[], &font, 85,
             BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text,
             BadgeAppearance::default(),
             BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium, true, PosterFit::Native).unwrap();
@@ -1687,7 +1727,7 @@ mod tests {
     fn render_with_fit(src: &[u8], target_width: u32, fit: PosterFit) -> Vec<u8> {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         render_poster_sync(
-            src, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal,
+            src, &[], &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal,
             LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Horizontal,
             target_width, 1.0, BadgeSize::Medium, false, fit,
         )
@@ -1735,7 +1775,7 @@ mod tests {
     fn render_logo_at_large_target_width() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(200, 80);
-        let result = render_logo_sync(&png, &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 1722, 2.2).unwrap();
+        let result = render_logo_sync(&png, &[], &[], &font, BadgeStyle::Horizontal, LabelStyle::Text, BadgeAppearance::default(), 1722, 2.2).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -1744,7 +1784,7 @@ mod tests {
     fn render_backdrop_at_large_target_width() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(640, 360);
-        let result = render_backdrop_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 3840, 2.0, BadgeSize::Medium, 0, 0).unwrap();
+        let result = render_backdrop_sync(&png, &[], &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Text, BadgeAppearance::default(), BadgeDirection::Vertical, 3840, 2.0, BadgeSize::Medium, 0, 0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
