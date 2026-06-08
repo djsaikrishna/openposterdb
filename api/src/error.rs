@@ -22,7 +22,7 @@ pub enum AppError {
     BadRequest(String),
 
     #[error("API error: {0}")]
-    Api(#[from] reqwest::Error),
+    Api(#[source] reqwest::Error),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -66,6 +66,33 @@ impl AppError {
                 other => AppError::Other(other.to_string()),
             },
         }
+    }
+}
+
+/// Strip the query string from a reqwest error's embedded URL.
+///
+/// reqwest stores the full request URL — including the query string — inside its
+/// errors and renders it in both `Display` and `Debug` (`… for url (…)`). Our
+/// upstream clients pass API keys as query parameters (`?api_key=…` / `?apikey=…`
+/// for TMDB, OMDb, MDBList, fanart), so an upstream 404/timeout/decode error
+/// would otherwise leak the key into the logs. Dropping the query keeps the
+/// scheme/host/path — useful for debugging and never secret — while removing the
+/// credential. Trakt sends its key as a header, which reqwest never embeds, so it
+/// is unaffected.
+///
+/// Applied at every boundary where a `reqwest::Error` becomes loggable: the
+/// `From` impl below (covers every `?`/`error_for_status()?` site) and the
+/// direct construction in `services::retry`.
+pub(crate) fn redact_url_secrets(mut err: reqwest::Error) -> reqwest::Error {
+    if let Some(url) = err.url_mut() {
+        url.set_query(None);
+    }
+    err
+}
+
+impl From<reqwest::Error> for AppError {
+    fn from(err: reqwest::Error) -> Self {
+        AppError::Api(redact_url_secrets(err))
     }
 }
 
@@ -206,5 +233,50 @@ mod tests {
             status_of(AppError::from_cached(arc)),
             StatusCode::INTERNAL_SERVER_ERROR
         );
+    }
+
+    #[tokio::test]
+    async fn api_error_strips_api_key_from_url() {
+        // Regression for the MDBList `?apikey=…` key leaking into logs: reqwest
+        // embeds the full request URL (query string included) in its error, and
+        // we format `AppError::Api` straight into the logs. Converting through
+        // `From<reqwest::Error>` must drop the query so the key can't escape.
+        //
+        // A local server returns 404 so `error_for_status()` produces exactly the
+        // error shape seen in production (`HTTP status … for url (…?apikey=…)`),
+        // with no external network so the test stays deterministic.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        // An empty router 404s every path — all we need to drive `error_for_status`.
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, axum::Router::new()).await;
+        });
+
+        let url = format!("http://{addr}/imdb/show/tt33306109?apikey=SUPERSECRETKEY");
+        let raw = reqwest::Client::new()
+            .get(&url)
+            .send()
+            .await
+            .expect("request reaches the local server")
+            .error_for_status()
+            .expect_err("server returns 404");
+
+        // Sanity-check that reqwest really leaks the key by default; otherwise this
+        // test could pass vacuously and never catch a regression.
+        let unsanitized = format!("{raw}");
+        assert!(
+            unsanitized.contains("SUPERSECRETKEY"),
+            "precondition: reqwest is expected to embed the key in its error, got: {unsanitized}"
+        );
+
+        let app: AppError = raw.into();
+        let display = format!("{app}");
+        let debug = format!("{app:?}");
+        for rendered in [&display, &debug] {
+            assert!(!rendered.contains("SUPERSECRETKEY"), "api key leaked: {rendered}");
+            assert!(!rendered.contains("apikey"), "query string leaked: {rendered}");
+        }
+        // The non-secret host/path is preserved so failures are still debuggable.
+        assert!(display.contains(&addr.to_string()), "host should be kept: {display}");
     }
 }
