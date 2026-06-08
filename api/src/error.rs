@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
@@ -36,6 +38,35 @@ pub enum AppError {
 
     #[error("{0}")]
     Other(String),
+}
+
+impl AppError {
+    /// Recover a typed `AppError` from moka's `Arc`-wrapped cache error.
+    ///
+    /// `moka`'s `try_get_with` returns the init closure's error as
+    /// `Arc<AppError>`, and on concurrent calls for the same key it hands
+    /// every waiter a *clone* of that `Arc`. Calling `Arc::try_unwrap` then
+    /// fails for all waiters (strong count > 1), so naively collapsing the
+    /// `Err` arm to [`AppError::Other`] turns a client-facing 404/400 into a
+    /// spurious 500 whenever requests race. Reconstruct the client-facing
+    /// variants by reference instead so the HTTP status is preserved; only
+    /// genuinely-internal variants (which are 500 regardless) collapse to
+    /// [`AppError::Other`].
+    pub fn from_cached(arc: Arc<AppError>) -> AppError {
+        // Sole owner (no concurrent waiters): move the exact error out,
+        // preserving full detail for internal variants too.
+        match Arc::try_unwrap(arc) {
+            Ok(err) => err,
+            Err(arc) => match arc.as_ref() {
+                AppError::InvalidIdType(msg) => AppError::InvalidIdType(msg.clone()),
+                AppError::IdNotFound(msg) => AppError::IdNotFound(msg.clone()),
+                AppError::BadRequest(msg) => AppError::BadRequest(msg.clone()),
+                AppError::Forbidden(msg) => AppError::Forbidden(msg.clone()),
+                AppError::Unauthorized => AppError::Unauthorized,
+                other => AppError::Other(other.to_string()),
+            },
+        }
+    }
 }
 
 impl IntoResponse for AppError {
@@ -143,5 +174,37 @@ mod tests {
     async fn client_errors_preserve_message() {
         let body = body_of(AppError::BadRequest("missing field".into())).await;
         assert_eq!(body["error"], "missing field");
+    }
+
+    #[test]
+    fn from_cached_sole_owner_preserves_variant() {
+        let arc = Arc::new(AppError::IdNotFound("no logo available".into()));
+        assert_eq!(
+            status_of(AppError::from_cached(arc)),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn from_cached_shared_arc_preserves_client_status() {
+        // The concurrent-waiter case: moka hands each waiter a clone of the
+        // same Arc, so strong_count > 1 and Arc::try_unwrap fails. This must
+        // still yield a 404, not a spurious 500.
+        let arc = Arc::new(AppError::IdNotFound("no logo available".into()));
+        let _waiter = arc.clone();
+        assert_eq!(
+            status_of(AppError::from_cached(arc)),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn from_cached_shared_arc_collapses_internal_to_500() {
+        let arc = Arc::new(AppError::DbError("connection refused".into()));
+        let _waiter = arc.clone();
+        assert_eq!(
+            status_of(AppError::from_cached(arc)),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 }

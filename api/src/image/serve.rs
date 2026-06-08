@@ -856,10 +856,7 @@ pub async fn handle_inner(
             Ok::<_, AppError>(bytes)
         })
         .await
-        .map_err(|e| match Arc::try_unwrap(e) {
-            Ok(app_err) => app_err,
-            Err(arc) => AppError::Other(arc.to_string()),
-        })?;
+        .map_err(AppError::from_cached)?;
 
     let total_ms = request_start.elapsed().as_millis() as u64;
     if total_ms > SLOW_REQUEST_MS {
@@ -1786,10 +1783,7 @@ pub async fn handle_episode_inner(
             Ok::<_, AppError>(bytes)
         })
         .await
-        .map_err(|e| match Arc::try_unwrap(e) {
-            Ok(app_err) => app_err,
-            Err(arc) => AppError::Other(arc.to_string()),
-        })?;
+        .map_err(AppError::from_cached)?;
     state
         .image_mem_cache
         .insert(cache_key, MemCacheEntry { bytes: bytes.clone(), last_checked: Instant::now() })
@@ -2057,10 +2051,7 @@ pub async fn handle_logo_backdrop_inner(
             Ok::<_, AppError>(bytes)
         })
         .await
-        .map_err(|e| match Arc::try_unwrap(e) {
-            Ok(app_err) => app_err,
-            Err(arc) => AppError::Other(arc.to_string()),
-        })?;
+        .map_err(AppError::from_cached)?;
 
     state
         .image_mem_cache
