@@ -219,9 +219,13 @@ async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, A
     };
     let details: Details = tmdb.get(&path, &[]).await?;
 
+    // TMDB returns an empty string (not null) for titles it hasn't cross-referenced
+    // to IMDb; treat that as absent so downstream MDBList/Trakt/OMDb lookups take
+    // their TMDB-id fallback or skip cleanly instead of querying with a blank id.
     let imdb_id = details
         .imdb_id
-        .or_else(|| details.external_ids.as_ref().and_then(|e| e.imdb_id.clone()));
+        .or_else(|| details.external_ids.as_ref().and_then(|e| e.imdb_id.clone()))
+        .filter(|s| !s.is_empty());
 
     let tvdb_id = details.external_ids.as_ref().and_then(|e| e.tvdb_id);
 
@@ -292,7 +296,8 @@ async fn resolve_episode_details(
         .await?;
 
     let imdb_id = hint_imdb_id
-        .or_else(|| details.external_ids.as_ref().and_then(|e| e.imdb_id.clone()));
+        .or_else(|| details.external_ids.as_ref().and_then(|e| e.imdb_id.clone()))
+        .filter(|s| !s.is_empty());
     let tvdb_id = details.external_ids.as_ref().and_then(|e| e.tvdb_id);
     let still_path = hint_still_path.or(details.still_path.clone());
 
@@ -673,7 +678,8 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
         return Ok(ResolvedId {
             imdb_id: details
                 .external_ids
-                .and_then(|e| e.imdb_id),
+                .and_then(|e| e.imdb_id)
+                .filter(|s| !s.is_empty()),
             tmdb_id: tv.id,
             tvdb_id: tvdb_id_num,
             media_type: MediaType::Tv,
@@ -693,7 +699,7 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             .get(&format!("/movie/{}", movie.id), &[])
             .await?;
         return Ok(ResolvedId {
-            imdb_id: details.imdb_id,
+            imdb_id: details.imdb_id.filter(|s| !s.is_empty()),
             tmdb_id: movie.id,
             tvdb_id: tvdb_id_num,
             media_type: MediaType::Movie,
