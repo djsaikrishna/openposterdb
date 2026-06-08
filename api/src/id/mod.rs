@@ -116,14 +116,7 @@ pub async fn resolve(
             }
         })
         .await
-        .map_err(|arc_err| match arc_err.as_ref() {
-            AppError::InvalidIdType(msg) => AppError::InvalidIdType(msg.clone()),
-            AppError::IdNotFound(msg) => AppError::IdNotFound(msg.clone()),
-            AppError::BadRequest(msg) => AppError::BadRequest(msg.clone()),
-            AppError::Unauthorized => AppError::Unauthorized,
-            AppError::Forbidden(msg) => AppError::Forbidden(msg.clone()),
-            other => AppError::Other(other.to_string()),
-        })
+        .map_err(AppError::from_cached)
 }
 
 async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, AppError> {
