@@ -120,6 +120,10 @@ where
                 return Ok(resp);
             }
             Err(e) => {
+                // Strip the API key from the request URL before it reaches the
+                // logs or the wrapped error (reqwest embeds the full URL, query
+                // string included, in its Display). See `error::redact_url_secrets`.
+                let e = crate::error::redact_url_secrets(e);
                 if attempt == config.max_retries {
                     tracing::warn!(
                         service = config.service_name,
