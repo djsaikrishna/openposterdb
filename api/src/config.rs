@@ -49,11 +49,26 @@ impl std::fmt::Debug for Config {
     }
 }
 
+/// Read an optional secret env var, trimming surrounding whitespace and treating
+/// an empty (or whitespace-only) value as absent.
+///
+/// Without this a blank or whitespace/CR/quote-contaminated value (a common
+/// deployment foot-gun: CRLF `.env` files, mis-quoted shell) would still be
+/// `Some(_)` and construct a live client that sends a junk key on every request.
+/// For Trakt that surfaces as a 403 on *every* title rather than the provider
+/// simply being disabled.
+fn optional_secret(key: &str) -> Option<String> {
+    env::var(key)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 impl Config {
     pub fn from_env() -> Self {
         let config = Self {
             tmdb_api_key: env::var("TMDB_API_KEY").expect("TMDB_API_KEY must be set"),
-            omdb_api_key: env::var("OMDB_API_KEY").ok(),
+            omdb_api_key: optional_secret("OMDB_API_KEY"),
             cache_dir: env::var("CACHE_DIR").unwrap_or_else(|_| "./cache".into()),
             db_dir: env::var("DB_DIR").unwrap_or_else(|_| "./db".into()),
             listen_addr: env::var("LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into()),
@@ -73,15 +88,15 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(85),
-            mdblist_api_key: env::var("MDBLIST_API_KEY").ok(),
+            mdblist_api_key: optional_secret("MDBLIST_API_KEY"),
             image_mem_cache_mb: env::var("IMAGE_MEM_CACHE_MB")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(512),
             static_dir: env::var("STATIC_DIR").ok(),
             cors_origin: env::var("CORS_ORIGIN").ok(),
-            fanart_api_key: env::var("FANART_API_KEY").ok(),
-            trakt_client_id: env::var("TRAKT_CLIENT_ID").ok(),
+            fanart_api_key: optional_secret("FANART_API_KEY"),
+            trakt_client_id: optional_secret("TRAKT_CLIENT_ID"),
             enable_cdn_redirects: env::var("ENABLE_CDN_REDIRECTS")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
@@ -179,6 +194,24 @@ mod tests {
         let cfg = Config::from_env();
         assert!(cfg.omdb_api_key.is_none());
         assert_eq!(cfg.mdblist_api_key.as_deref(), Some("mdblist_test"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_optional_secret_trims_and_drops_empty() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        // A whitespace-padded value is trimmed (CRLF .env / mis-quoted shell).
+        unsafe { env::set_var("OMDB_API_KEY", "  omdb_test  ") };
+        // Empty / whitespace-only optional keys are treated as absent so they
+        // never build a client that 403s on every request (the Trakt symptom).
+        unsafe { env::set_var("MDBLIST_API_KEY", "") };
+        unsafe { env::set_var("TRAKT_CLIENT_ID", "   ") };
+
+        let cfg = Config::from_env();
+        assert_eq!(cfg.omdb_api_key.as_deref(), Some("omdb_test"), "value is trimmed");
+        assert!(cfg.mdblist_api_key.is_none(), "empty key treated as absent");
+        assert!(cfg.trakt_client_id.is_none(), "whitespace-only key treated as absent");
     }
 
     #[test]
