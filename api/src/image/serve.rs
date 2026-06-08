@@ -133,6 +133,11 @@ pub fn badge_background_cache_suffix(background: &str) -> String {
 /// tokenized when it actually affects placement: horizontal for left/right
 /// positions, vertical for top/bottom positions.
 pub fn edge_inset_cache_suffix(position: BadgePosition, inset_x: i32, inset_y: i32) -> String {
+    // Clamp to the supported range so an out-of-range stored value can't mint a
+    // cache key (e.g. `.eh80`) that the renderer — which clamps to MAX_EDGE_INSET —
+    // would never actually produce, splitting the cache for identical output.
+    let inset_x = crate::services::db::clamp_edge_inset(inset_x);
+    let inset_y = crate::services::db::clamp_edge_inset(inset_y);
     let mut out = String::new();
     if (position.is_left() || position.is_right()) && inset_x > 0 {
         out.push_str(&format!(".eh{inset_x}"));
