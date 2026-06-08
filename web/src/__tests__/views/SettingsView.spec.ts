@@ -39,6 +39,8 @@ const defaultSettings = {
   poster_badge_split: false,
   backdrop_position: 'tr',
   backdrop_badge_direction: 'v',
+  backdrop_edge_inset_x: 0,
+  backdrop_edge_inset_y: 0,
   episode_ratings_limit: 1,
   episode_badge_style: 'v',
   episode_label_style: 'o',
@@ -374,6 +376,41 @@ describe('SettingsView', () => {
         episode_position: 'tr',
         episode_badge_direction: 'v',
         episode_blur: false,
+      }),
+    )
+  })
+
+  it('toggleFreeApiKey payload preserves backdrop position, direction, and edge insets', async () => {
+    // Regression guard: the toggle must forward the full settings, not a curated
+    // subset. A previous payload omitted these backdrop fields, so flipping the
+    // free-key switch silently reset them to their serde defaults on the server.
+    mockAdminApi.getSettings.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ...defaultSettings,
+          backdrop_position: 'bl',
+          backdrop_badge_direction: 'h',
+          backdrop_edge_inset_x: 12,
+          backdrop_edge_inset_y: 7,
+        }),
+    })
+    mockAdminApi.updateSettings.mockResolvedValue({ ok: true })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const toggle = wrapper.find('button[role="switch"]')
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        free_api_key_enabled: true,
+        backdrop_position: 'bl',
+        backdrop_badge_direction: 'h',
+        backdrop_edge_inset_x: 12,
+        backdrop_edge_inset_y: 7,
       }),
     )
   })

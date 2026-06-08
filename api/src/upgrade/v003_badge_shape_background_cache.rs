@@ -76,6 +76,10 @@ pub async fn run_fs(cache_dir: &str, external_cache_only: bool) -> Result<(), Ap
     let cache_dir = cache_dir.to_string();
     let renamed = tokio::task::spawn_blocking(move || {
         let mut count = 0u64;
+        // Must cover every rendered image type the DB step touches (run_db is
+        // unfiltered by image_type). If a new image type / cache subdir is ever
+        // added, add it here too — otherwise its DB key migrates but the file is
+        // not renamed and the next request harmlessly regenerates it.
         for subdir in ["posters", "logos", "backdrops", "episodes"] {
             count += rename_files(&std::path::Path::new(&cache_dir).join(subdir))?;
         }

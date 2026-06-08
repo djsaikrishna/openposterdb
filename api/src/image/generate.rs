@@ -733,8 +733,10 @@ pub fn render_backdrop_sync(
     // Edge insets are a percentage of the canvas dimension, so they stay
     // proportional across image sizes (small/medium/large). They apply to the
     // rating badges only; the overlay groups use the default margin.
-    let inset_pct_x = edge_inset_x.clamp(0, 100) as f32 / 100.0;
-    let inset_pct_y = edge_inset_y.clamp(0, 100) as f32 / 100.0;
+    // Clamp to the same MAX_EDGE_INSET the settings/cache-key paths use so the
+    // rendered inset can never diverge from the value baked into the cache key.
+    let inset_pct_x = crate::services::db::clamp_edge_inset(edge_inset_x) as f32 / 100.0;
+    let inset_pct_y = crate::services::db::clamp_edge_inset(edge_inset_y) as f32 / 100.0;
     let extra_x = (canvas.width() as f32 * inset_pct_x).round() as u32;
     let extra_y = (canvas.height() as f32 * inset_pct_y).round() as u32;
 

@@ -48,54 +48,13 @@ async function toggleFreeApiKey() {
   freeKeyLoading.value = true
   freeKeyError.value = ''
   const newVal = !freeApiKeyEnabled.value
-  const s = settings.value
+  // Forward the full settings unchanged (admin update is a full replace where every
+  // omitted field is written back as its serde default). Spreading guards against
+  // silently resetting any field not explicitly listed — e.g. backdrop position,
+  // direction, and edge insets. The read-only free_api_key_locked field is ignored
+  // by the backend.
   const res = await adminApi.updateSettings({
-    image_source: s.image_source,
-    lang: s.lang,
-    textless: s.textless,
-    ratings_limit: s.ratings_limit,
-    ratings_order: s.ratings_order,
-    ratings_exclude: s.ratings_exclude,
-    poster_position: s.poster_position,
-    logo_ratings_limit: s.logo_ratings_limit,
-    backdrop_ratings_limit: s.backdrop_ratings_limit,
-    poster_badge_style: s.poster_badge_style,
-    logo_badge_style: s.logo_badge_style,
-    backdrop_badge_style: s.backdrop_badge_style,
-    poster_label_style: s.poster_label_style,
-    logo_label_style: s.logo_label_style,
-    backdrop_label_style: s.backdrop_label_style,
-    poster_badge_direction: s.poster_badge_direction,
-    poster_badge_split: s.poster_badge_split,
-    poster_fit: s.poster_fit,
-    poster_badge_size: s.poster_badge_size,
-    logo_badge_size: s.logo_badge_size,
-    backdrop_badge_size: s.backdrop_badge_size,
-    episode_ratings_limit: s.episode_ratings_limit,
-    episode_badge_style: s.episode_badge_style,
-    episode_label_style: s.episode_label_style,
-    episode_badge_size: s.episode_badge_size,
-    episode_position: s.episode_position,
-    episode_badge_direction: s.episode_badge_direction,
-    episode_blur: s.episode_blur,
-    poster_badge_shape: s.poster_badge_shape,
-    logo_badge_shape: s.logo_badge_shape,
-    backdrop_badge_shape: s.backdrop_badge_shape,
-    episode_badge_shape: s.episode_badge_shape,
-    poster_badge_background: s.poster_badge_background,
-    logo_badge_background: s.logo_badge_background,
-    backdrop_badge_background: s.backdrop_badge_background,
-    episode_badge_background: s.episode_badge_background,
-    quality_style: s.quality_style,
-    quality_direction: s.quality_direction,
-    poster_lang_icon: s.poster_lang_icon,
-    logo_lang_icon: s.logo_lang_icon,
-    backdrop_lang_icon: s.backdrop_lang_icon,
-    lang_exclude: s.lang_exclude,
-    poster_quality_position: s.poster_quality_position,
-    backdrop_quality_position: s.backdrop_quality_position,
-    poster_lang_position: s.poster_lang_position,
-    backdrop_lang_position: s.backdrop_lang_position,
+    ...settings.value,
     free_api_key_enabled: newVal,
   })
   if (res.ok) {

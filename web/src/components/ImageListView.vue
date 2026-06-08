@@ -189,9 +189,9 @@ const previewSizeClass = computed(() => {
 })
 
 const skeletonClass = computed(() => {
-  if (props.kind === 'poster') return 'h-[400px] w-[270px] rounded-md'
-  if (props.kind === 'logo') return 'h-[200px] w-[400px] rounded-md'
-  return 'h-[270px] w-[480px] rounded-md'
+  if (props.kind === 'poster') return 'h-[400px] w-[270px] max-w-full rounded-md'
+  if (props.kind === 'logo') return 'h-[200px] w-[400px] max-w-full rounded-md'
+  return 'h-[270px] w-[480px] max-w-full rounded-md'
 })
 </script>
 
@@ -284,15 +284,15 @@ const skeletonClass = computed(() => {
     <Dialog :open="previewOpen" @update:open="(v: boolean) => { if (!v) closePreview() }">
       <DialogContent :class="previewSizeClass">
         <DialogHeader>
-          <DialogTitle class="font-mono text-sm">{{ previewKey }}</DialogTitle>
+          <DialogTitle class="min-w-0 break-all pr-8 font-mono text-sm">{{ previewKey }}</DialogTitle>
         </DialogHeader>
-        <div class="flex items-center justify-center min-h-[200px]">
+        <div class="flex items-center justify-center min-h-[200px] min-w-0">
           <Skeleton v-if="previewLoading" :class="skeletonClass" />
           <img
             v-else-if="previewUrl"
             :src="previewUrl"
             :alt="previewKey"
-            class="max-h-[70vh] rounded-md object-contain"
+            class="max-h-[70vh] max-w-full rounded-md object-contain"
           />
           <p v-else class="text-sm text-muted-foreground">Failed to load {{ kindLabel }}</p>
         </div>

@@ -8,10 +8,13 @@ services:
       TMDB_API_KEY: ${TMDB_API_KEY:?Set TMDB_API_KEY in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env — generate with: openssl rand -hex 32}
 
-      # At least one ratings source is required — MDBList is preferred (covers all 7 rating sources)
+      # At least one ratings source (MDBList, OMDb, or Trakt) is required —
+      # MDBList is preferred (covers 9 rating sources)
       MDBLIST_API_KEY: ${MDBLIST_API_KEY:-}
       # OMDb is also required for IMDB episode ratings (MDBList does not support episode-level ratings)
       OMDB_API_KEY: ${OMDB_API_KEY:-}
+      # Trakt Client ID — Trakt community ratings for movies, shows, and episodes
+      TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID:-}
 
       # Optional — enables Fanart.tv as an alternative or preferred image source
       FANART_API_KEY: ${FANART_API_KEY:-}

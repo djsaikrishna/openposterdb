@@ -207,6 +207,10 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "duplicate column",
     ),
     (
+        // Frozen historical default — must not change. This only backfills DBs that
+        // predate the column (whose per-key rows already hold a user-set value, so
+        // the column default is never the effective render value). The authoritative
+        // default for new rows is `default_ratings_order()` / `SCHEMA_SQL` above.
         "ALTER TABLE api_key_settings ADD COLUMN ratings_order TEXT NOT NULL DEFAULT 'mal,imdb,lb,rt,rta,mc,tmdb,trakt'",
         "duplicate column",
     ),

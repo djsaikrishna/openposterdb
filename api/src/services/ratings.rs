@@ -394,13 +394,21 @@ async fn fetch_trakt_rating(
         }
     };
 
-    if resp.rating <= 0.0 || resp.votes == 0 {
+    trakt_badge(resp.rating, resp.votes)
+}
+
+/// Build a Trakt rating badge from a raw 0–10 rating and its vote count.
+///
+/// Pure (no I/O) so the percent formatting (`rating * 10`) and the
+/// no-rating/no-votes suppression can be unit-tested without a live Trakt
+/// client. Returns `None` when there's nothing meaningful to show.
+fn trakt_badge(rating: f64, votes: u64) -> Option<RatingBadge> {
+    if rating <= 0.0 || votes == 0 {
         return None;
     }
-
     Some(RatingBadge {
         source: RatingSource::Trakt,
-        value: format!("{:.0}%", resp.rating * 10.0),
+        value: format!("{:.0}%", rating * 10.0),
     })
 }
 
@@ -1055,6 +1063,50 @@ mod tests {
         assert!(mdblist_badges(&resp).is_empty());
     }
 
+    #[test]
+    fn mdblist_badges_suppresses_zero_score_sources() {
+        // A 0 score is MDBList's "no data" sentinel for score-based sources; it
+        // must be dropped rather than rendered as "0%"/"0", matching Ebert and the
+        // aggregate score.
+        let json = r#"{
+            "score": null,
+            "ids": {},
+            "ratings": [
+                { "source": "tomatoes", "value": null, "score": 0, "votes": 0 },
+                { "source": "popcorn", "value": null, "score": 0, "votes": 0 },
+                { "source": "metacritic", "value": null, "score": 0, "votes": 0 },
+                { "source": "trakt", "value": null, "score": 0, "votes": 0 }
+            ]
+        }"#;
+        let resp: MdblistResponse = serde_json::from_str(json).expect("valid mdblist response");
+        assert!(mdblist_badges(&resp).is_empty(), "zero score-based sources are suppressed");
+    }
+
+    // --- trakt_badge (percent formatting + suppression) ---
+
+    #[test]
+    fn trakt_badge_formats_rating_as_percent() {
+        // Trakt returns a 0–10 rating; we render it as a percentage (×10).
+        assert_eq!(trakt_badge(7.5, 1200).map(|b| b.value), Some("75%".to_string()));
+        assert_eq!(trakt_badge(10.0, 5).map(|b| b.value), Some("100%".to_string()));
+        assert_eq!(
+            trakt_badge(8.36, 42).map(|b| b.value),
+            Some("84%".to_string()),
+            "rounds to whole percent"
+        );
+    }
+
+    #[test]
+    fn trakt_badge_suppresses_zero_rating_or_no_votes() {
+        assert!(trakt_badge(0.0, 1000).is_none(), "no rating");
+        assert!(trakt_badge(7.5, 0).is_none(), "no votes");
+    }
+
+    #[test]
+    fn trakt_badge_uses_trakt_source() {
+        assert_eq!(trakt_badge(6.0, 1).map(|b| b.source), Some(RatingSource::Trakt));
+    }
+
     // --- mdblist_lookup_for (issue #14) ---
 
     fn resolved(imdb: Option<&str>, tmdb_id: u64, media_type: MediaType) -> ResolvedId {
@@ -1091,6 +1143,15 @@ mod tests {
     }
 
     #[test]
+    fn mdblist_lookup_falls_back_to_tmdb_when_imdb_empty() {
+        // TMDB returns "" (not null) for titles with no IMDb cross-reference.
+        // An empty id must be treated as absent so the TMDB fallback still fires —
+        // otherwise the anime/no-IMDb case (issue #14) loses every MDBList badge.
+        let r = resolved(Some(""), 1429, MediaType::Tv);
+        assert_eq!(mdblist_lookup_for(&r), Some(MdblistLookup::Tmdb(1429)));
+    }
+
+    #[test]
     fn mdblist_lookup_none_for_episodes() {
         // MDBList has no episode-level ratings regardless of which ids are present.
         let with_imdb = resolved(Some("tt2560140"), 1429, MediaType::Episode);
@@ -1120,7 +1181,10 @@ fn mdblist_lookup_for(resolved: &ResolvedId) -> Option<MdblistLookup<'_>> {
     if resolved.media_type == MediaType::Episode {
         return None;
     }
-    match resolved.imdb_id.as_deref() {
+    // Treat an empty imdb_id as absent. Resolved ids are normalised at the source
+    // (id/mod.rs), but guard here too so the TMDB fallback can never be defeated by
+    // a blank id reaching this function directly.
+    match resolved.imdb_id.as_deref().filter(|s| !s.is_empty()) {
         Some(imdb_id) => Some(MdblistLookup::Imdb(imdb_id)),
         None => Some(MdblistLookup::Tmdb(resolved.tmdb_id)),
     }
@@ -1165,7 +1229,10 @@ fn mdblist_badges(resp: &MdblistResponse) -> Vec<RatingBadge> {
                 source: RatingSource::Imdb,
                 value: format!("{v:.1}"),
             }),
-            "trakt" => r.score.map(|s| RatingBadge {
+            // Score-based sources: suppress a 0 (MDBList's "no data" sentinel),
+            // matching the zero-suppression on Ebert, the aggregate score, and the
+            // direct Trakt/TMDB paths so a missing source never renders as 0%.
+            "trakt" => r.score.filter(|s| *s > 0.0).map(|s| RatingBadge {
                 source: RatingSource::Trakt,
                 value: format!("{:.0}%", s),
             }),
@@ -1173,19 +1240,19 @@ fn mdblist_badges(resp: &MdblistResponse) -> Vec<RatingBadge> {
                 source: RatingSource::Letterboxd,
                 value: format!("{v:.1}"),
             }),
-            "popcorn" => r.score.map(|s| RatingBadge {
+            "popcorn" => r.score.filter(|s| *s > 0.0).map(|s| RatingBadge {
                 source: RatingSource::RtAudience,
                 value: format!("{:.0}%", s),
             }),
-            "tomatoes" => r.score.map(|s| RatingBadge {
+            "tomatoes" => r.score.filter(|s| *s > 0.0).map(|s| RatingBadge {
                 source: RatingSource::Rt,
                 value: format!("{:.0}%", s),
             }),
-            "metacritic" => r.score.map(|s| RatingBadge {
+            "metacritic" => r.score.filter(|s| *s > 0.0).map(|s| RatingBadge {
                 source: RatingSource::Metacritic,
                 value: format!("{:.0}", s),
             }),
-            "myanimelist" => r.score.map(|s| RatingBadge {
+            "myanimelist" => r.score.filter(|s| *s > 0.0).map(|s| RatingBadge {
                 source: RatingSource::Mal,
                 value: format!("{:.2}", s / 10.0),
             }),

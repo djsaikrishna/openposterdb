@@ -225,6 +225,13 @@ function revertEdits() {
 
 let pendingSave = false
 
+// An emptied `v-model.number` input yields '' (and a partial entry can yield a
+// non-integer); the backend types edge insets as a required i32, so send a clean,
+// clamped integer to avoid a 400 mid-edit. Matches the server's 0–50 clamp.
+function coerceInset(value: number): number {
+  return Number.isFinite(value) ? Math.min(50, Math.max(0, Math.round(value))) : 0
+}
+
 async function autoSave() {
   if (saving.value) {
     pendingSave = true
@@ -259,8 +266,8 @@ async function autoSave() {
       backdrop_badge_size: editBackdropBadgeSize.value,
       backdrop_position: editBackdropPosition.value,
       backdrop_badge_direction: editBackdropBadgeDirection.value,
-      backdrop_edge_inset_x: editBackdropEdgeInsetX.value,
-      backdrop_edge_inset_y: editBackdropEdgeInsetY.value,
+      backdrop_edge_inset_x: coerceInset(editBackdropEdgeInsetX.value),
+      backdrop_edge_inset_y: coerceInset(editBackdropEdgeInsetY.value),
       episode_ratings_limit: editEpisodeRatingsLimit.value,
       episode_badge_style: editEpisodeBadgeStyle.value,
       episode_label_style: editEpisodeLabelStyle.value,
