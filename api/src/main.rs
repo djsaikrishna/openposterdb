@@ -35,6 +35,14 @@ async fn main() {
 
     let config = Config::from_env();
     let http = reqwest::Client::builder()
+        // Trakt requires a User-Agent and fronts its API with a Cloudflare WAF
+        // that returns 403 to requests without one; reqwest sends none by default.
+        // Identify ourselves on every outbound provider call.
+        .user_agent(concat!(
+            "openposterdb/",
+            env!("CARGO_PKG_VERSION"),
+            " (+https://github.com/PNRxA/openposterdb)"
+        ))
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
         .build()
