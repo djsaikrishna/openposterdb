@@ -302,12 +302,12 @@ Cache keys uniquely identify a rendered image. They are used as keys in the in-m
 
 **Poster:**
 ```
-{id_type}/{id_value}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{shape_suffix}{background_suffix}{size_suffix}
+{id_type}/{id_value}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{shape_suffix}{background_suffix}{split_suffix}{fit_suffix}{size_suffix}
 ```
 
 **Fanart poster:**
 ```
-{id_type}/{id_value}{variant}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{shape_suffix}{background_suffix}{size_suffix}
+{id_type}/{id_value}{variant}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{shape_suffix}{background_suffix}{split_suffix}{fit_suffix}{size_suffix}
 ```
 
 **Logo:**
@@ -317,21 +317,24 @@ Cache keys uniquely identify a rendered image. They are used as keys in the in-m
 
 **Backdrop:**
 ```
-{id_type}/{id_value}{kind_prefix}{variant}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{shape_suffix}{background_suffix}{size_suffix}
+{id_type}/{id_value}{kind_prefix}{variant}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{shape_suffix}{background_suffix}{edge_inset_suffix}{size_suffix}
 ```
 
 ### Suffix Reference
 
 | Suffix | Format | Example | Description |
 |---|---|---|---|
-| Ratings | `@{chars}` | `@mil` | Single-char per source, no commas (`m`=MAL, `i`=IMDb, `l`=Letterboxd, `r`=RT, `a`=RT Audience, `c`=Metacritic, `t`=TMDB, `k`=Trakt) |
+| Ratings | `@{chars}` | `@mil` | Single-char per source, no commas (`m`=MAL, `i`=IMDb, `l`=Letterboxd, `r`=RT, `a`=RT Audience, `c`=Metacritic, `t`=TMDB, `k`=Trakt, `d`=MDBList score, `e`=Roger Ebert) |
 | Position | `.p{pos}` | `.pbc`, `.pl` | Poster badge position (`bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br`) |
 | Badge style | `.s{style}` | `.sh`, `.sv` | `h` = horizontal, `v` = vertical |
 | Label style | `.l{style}` | `.lt`, `.li`, `.lo` | `t` = text labels, `i` = icon labels, `o` = official provider logos |
 | Badge direction | `.d{dir}` | `.dh`, `.dv` | `h` = horizontal, `v` = vertical (resolved from `d` = default) |
 | Badge size | `.b{size}` | `.bm`, `.bxl` | `xs` = extra-small, `s` = small, `m` = medium (default), `l` = large, `xl` = extra-large |
-| Badge shape | `.sh{shape}` | `.shr`, `.shp` | `r` = rounded (default), `p` = pill |
+| Badge shape | `.sh{shape}` | `.shr`, `.shp` | `r` = rounded (default), `p` = pill (the `sh` prefix distinguishes it from the `.s{style}` token above) |
 | Badge background | `.bg{bg}` | `.bgd`, `.bgn` | `d` = default, `k` = dark, `t` = transparent, `n` = none |
+| Split (poster) | `.x1` | `.x1` | Poster badges split onto opposite sides; only present when enabled |
+| Poster fit | `.f{fit}` | `.fc`, `.fp`, `.fb` | `c` = cover, `p` = pad, `b` = blur — `native` (default) emits no token |
+| Edge inset (backdrop) | `.eh{n}` / `.ev{n}` | `.eh8`, `.ev3` | Backdrop ratings inset from the edge by `n`% — `eh` horizontal, `ev` vertical; only the position-relevant axis, only when non-zero |
 | Image size | `.z{size}` | `.zm`, `.zl` | `s` = small, `m` = medium (default), `l` = large, `vl` = very-large |
 
 ### Image Kind Prefixes

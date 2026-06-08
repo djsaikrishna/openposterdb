@@ -392,3 +392,101 @@ async fn poster_ratings_limit_ten_accepted() {
     let res = app.oneshot(req).await.unwrap();
     assert_ne!(res.status(), StatusCode::BAD_REQUEST);
 }
+
+// --- Badge shape / background / split / fit / edge inset query params ---
+
+#[tokio::test]
+async fn poster_badge_shape_and_background_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?badge_shape=p&badge_background=k"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn poster_split_and_fit_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?split=true&fit=cover"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn backdrop_edge_inset_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/backdrop-default/tt0000001.jpg?edge_inset_x=8&edge_inset_y=3&position=bl"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn poster_invalid_badge_shape_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?badge_shape=z"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn poster_invalid_badge_background_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?badge_background=z"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn poster_invalid_fit_rejected() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?fit=bogus"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
