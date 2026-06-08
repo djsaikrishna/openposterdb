@@ -31,8 +31,16 @@ fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
-# Update Cargo.toml version
-sed -i "0,/^version = \".*\"/s//version = \"$VERSION\"/" "$REPO_ROOT/api/Cargo.toml"
+# Update Cargo.toml version — rewrite the first `version = "..."` line (the
+# [package] version; dependency versions are inline and don't start a line).
+# Uses awk for portability: BSD/macOS sed rejects `sed -i` without a suffix and
+# the GNU-only `0,/re/` address form.
+cargo_toml="$REPO_ROOT/api/Cargo.toml"
+tmp="$(mktemp)"
+awk -v ver="$VERSION" '
+    !done && /^version = "/ { sub(/"[^"]*"/, "\"" ver "\""); done = 1 }
+    { print }
+' "$cargo_toml" > "$tmp" && mv "$tmp" "$cargo_toml"
 
 # Update Cargo.lock
 (cd "$REPO_ROOT/api" && cargo update --workspace)
