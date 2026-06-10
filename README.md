@@ -64,6 +64,20 @@ TMDB and TVDB IDs also work for episodes:
 
 The episode endpoint accepts a series-level ID combined with season/episode numbers — no episode-specific ID is needed.
 
+### Jellyfin
+
+OpenPosterDB has a dedicated [Jellyfin plugin](https://github.com/PNRxA/jellyfin-plugin-openposterdb) — a separate, open-source remote image provider. It fetches posters, backdrops, logos and episode stills (with rating badges) from your self-hosted instance, keyed off each item's IMDb / TMDB / TVDB id. Install it from the plugin repository, then point it at your instance:
+
+```
+https://raw.githubusercontent.com/PNRxA/jellyfin-plugin-openposterdb/main/manifest.json
+```
+
+1. In Jellyfin, go to Dashboard → Plugins → Repositories and add the manifest URL above.
+2. Install "OpenPosterDB" from the Catalog, then restart Jellyfin.
+3. Open the plugin's settings and set the Base URL and API key for your OpenPosterDB instance.
+
+See the [plugin repo](https://github.com/PNRxA/jellyfin-plugin-openposterdb) for version and compatibility details.
+
 ## API Endpoints
 
 ### Poster
