@@ -78,6 +78,26 @@ https://raw.githubusercontent.com/PNRxA/jellyfin-plugin-openposterdb/main/manife
 
 See the [plugin repo](https://github.com/PNRxA/jellyfin-plugin-openposterdb) for version and compatibility details.
 
+### Plex
+
+Plex deprecated its legacy plugin agents, so OpenPosterDB connects through a **Custom Metadata Provider** (Plex Media Server **1.43+**). A hosted provider runs at **`https://plex.openposterdb.com`** — nothing to install. It's open source at [openposterdb-plex-provider](https://github.com/PNRxA/openposterdb-plex-provider) if you'd rather self-host.
+
+Add it as two providers — one for movies, one for TV — each with your OpenPosterDB API key in the URL:
+
+| Library | Provider URL |
+|---|---|
+| Movies | `https://plex.openposterdb.com/{api_key}/movie` |
+| TV | `https://plex.openposterdb.com/{api_key}/tv` |
+
+1. In Plex, go to Settings → Manage → Metadata Agents → **Add Provider** and add the Movies URL above; add the TV URL as a second provider.
+2. **Add Agent** — create an agent that pairs the OpenPosterDB provider with **Plex Movie** (and another with **Plex TV Series**) so Plex still supplies titles and metadata, then drag OpenPosterDB above the default art source.
+3. Assign the agent to each library under Library → Edit → Advanced → Agent, then **Refresh Metadata**.
+
+OpenPosterDB then supplies rating-badged posters, backdrops and logos for your movies and TV shows. To pin a poster style, append OpenPosterDB [options](#api-endpoints) to the mount segment, e.g. `https://plex.openposterdb.com/{api_key}/movie~badge_style=v&ratings_limit=5`.
+
+> [!NOTE]
+> Plex's Custom Metadata Provider API is in beta and requires PMS 1.43+.
+
 ## API Endpoints
 
 ### Poster
