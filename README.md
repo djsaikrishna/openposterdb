@@ -509,7 +509,9 @@ When `EXTERNAL_CACHE_ONLY=true`, the server skips image file writes to disk (ren
 The admin panel can purge cached images without touching the database volume or restarting the container — useful when a poster rendered from a bad source image, when global render settings changed and left orphaned variants behind, or for general cache hygiene.
 
 - **Clear everything** — the **Clear cache** button on the dashboard wipes all rendered images, raw downloads, and settings-preview thumbnails on disk, every `image_meta` / `available_ratings` row, and every in-memory image cache (including the settings-preview cache and the upstream TMDB/Fanart.tv image-list and ratings caches). Images regenerate from scratch on the next request, so the first load of each title afterwards is slower. This is the path that guarantees a fully clean re-fetch.
-- **Purge one title** — the trash button on a row in the poster/logo/backdrop/episode lists removes *every* cached variant of that title for that image kind. One title maps to many cache entries (the key encodes ratings, position, style, size, language, …), so the purge prefix-matches the title id rather than deleting a single key.
+- **Purge one title, or one variant** — the trash button on a row in the poster/logo/backdrop/episode lists opens a dialog with two choices:
+  - **Entire title** removes *every* cached variant of that title for that image kind. One title maps to many cache entries (the key encodes ratings, position, style, size, language, …), so this prefix-matches the title id rather than deleting a single key.
+  - **This variant** removes only the single rendered entry the row represents (one exact cache key), leaving the title's other variants and its shared `available_ratings` index untouched.
 
 Each purge clears the relevant layers consistently: the in-memory render caches, the rendered files on disk, and the SQLite metadata (`image_meta` plus the title's `available_ratings` index, so the next request re-resolves its sources).
 
@@ -518,7 +520,7 @@ A per-title purge is scoped to **rendered output**. A couple of things it delibe
 - **Upstream source caches** (the TMDB/Fanart.tv image lists and aggregated ratings) are keyed by the resolved TMDB id and expire on their own short TTL (~30–60 min). A re-render right after a per-title purge may briefly reuse them, so for an immediate clean re-fetch of changed upstream art/ratings use **Clear cache** instead.
 - **Cross-ID copies** — the same title cached under a different id form (e.g. an `imdb` request and a `tmdb` request resolving to the same movie) live under a different `id_type`. A purge targets the id form you pass; the alternate copy regenerates or expires on its own.
 
-The matching API endpoints (behind the admin auth middleware) are `POST /api/admin/cache/purge` and `DELETE /api/admin/{posters,logos,backdrops,episodes}/{id_type}/{id_value}`.
+The matching API endpoints (behind the admin auth middleware) are `POST /api/admin/cache/purge` and `DELETE /api/admin/{posters,logos,backdrops,episodes}/{id_type}/{id_value}` — the latter purges the whole title by default, or a single variant with `?scope=variant` (in which case `{id_value}` is the full cache value rather than the bare title id).
 
 Under `EXTERNAL_CACHE_ONLY`, there are no files on disk to remove and the CDN's cached copies cannot be purged from here, so a purge clears only the in-memory caches and SQLite metadata. The admin UI surfaces this as a partial purge.
 

@@ -876,3 +876,80 @@ async fn purge_title_external_cache_only_clears_db_without_disk() {
     // No cache directory is ever created under EXTERNAL_CACHE_ONLY.
     assert!(!std::path::Path::new(&cache_dir).exists());
 }
+
+#[tokio::test]
+async fn purge_poster_variant_clears_only_that_key() {
+    use openposterdb_api::cache::{self, ImageType, MemCacheEntry};
+    use openposterdb_api::entity::{available_ratings, image_meta};
+    use sea_orm::EntityTrait;
+    use std::time::Instant;
+
+    let cache_dir = std::env::temp_dir()
+        .join(format!("opdb-purge-variant-test-{}", std::process::id()))
+        .to_string_lossy()
+        .to_string();
+    let _ = std::fs::remove_dir_all(&cache_dir);
+
+    let (app, state) = common::setup_test_app_with_options(common::TestAppOptions {
+        cache_dir_override: Some(cache_dir.clone()),
+        ..Default::default()
+    })
+    .await;
+    let token = common::setup_admin(&app).await;
+
+    let target_key = "imdb/tt0111161_t_de@imc";
+    let sibling_key = "imdb/tt0111161@imc"; // same title, different variant — must survive
+
+    for value in ["tt0111161_t_de@imc", "tt0111161@imc"] {
+        let p = cache::typed_cache_path(&cache_dir, ImageType::Poster, "imdb", value).unwrap();
+        cache::write(&p, b"x").await.unwrap();
+    }
+    cache::upsert_meta_db(&state.db, target_key, None, ImageType::Poster).await.unwrap();
+    cache::upsert_meta_db(&state.db, sibling_key, None, ImageType::Poster).await.unwrap();
+    cache::upsert_available_ratings(&state.db, "imdb/tt0111161", "imc", None).await.unwrap();
+    state
+        .image_mem_cache
+        .insert(target_key.to_string(), MemCacheEntry { bytes: vec![0u8; 4].into(), last_checked: Instant::now() })
+        .await;
+    state
+        .image_mem_cache
+        .insert(sibling_key.to_string(), MemCacheEntry { bytes: vec![0u8; 4].into(), last_checked: Instant::now() })
+        .await;
+    state.image_mem_cache.run_pending_tasks().await;
+    state.image_inflight.insert(target_key.to_string(), vec![0u8; 4].into()).await;
+    state.image_inflight.insert(sibling_key.to_string(), vec![0u8; 4].into()).await;
+    state.image_inflight.run_pending_tasks().await;
+
+    // Purge ONLY the target variant (?scope=variant; cache value '@' percent-encoded).
+    let req = Request::builder()
+        .method("DELETE")
+        .uri("/api/admin/posters/imdb/tt0111161_t_de%40imc?scope=variant")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["files_deleted"], 1);
+    assert_eq!(json["meta_deleted"], 1);
+    // A single-variant purge leaves the title's shared available_ratings index alone.
+    assert_eq!(json["ratings_deleted"], 0);
+
+    // Disk + DB: only the target variant is gone; the sibling variant survives.
+    assert!(!std::path::Path::new(&cache_dir).join("posters/imdb/tt0111161_t_de@imc.jpg").exists());
+    assert!(std::path::Path::new(&cache_dir).join("posters/imdb/tt0111161@imc.jpg").exists());
+    assert!(image_meta::Entity::find_by_id(target_key).one(&state.db).await.unwrap().is_none());
+    assert!(image_meta::Entity::find_by_id(sibling_key).one(&state.db).await.unwrap().is_some());
+    assert!(available_ratings::Entity::find_by_id("imdb/tt0111161").one(&state.db).await.unwrap().is_some());
+
+    // In-memory: only the target variant evicted, in both render and in-flight caches.
+    state.image_mem_cache.run_pending_tasks().await;
+    state.image_inflight.run_pending_tasks().await;
+    assert!(state.image_mem_cache.get(target_key).await.is_none());
+    assert!(state.image_mem_cache.get(sibling_key).await.is_some());
+    assert!(state.image_inflight.get(target_key).await.is_none());
+    assert!(state.image_inflight.get(sibling_key).await.is_some());
+
+    let _ = std::fs::remove_dir_all(&cache_dir);
+}

@@ -225,6 +225,17 @@ describe('api', () => {
     expect(options.method).toBe('DELETE')
   })
 
+  it('adminApi.purgePoster with variant scope encodes the cache value and adds ?scope=variant', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.purgePoster('imdb', 'tt0111161_t_de@imc', 'variant')
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/posters/imdb/tt0111161_t_de%40imc?scope=variant')
+    expect(options.method).toBe('DELETE')
+  })
+
   it('adminApi.previewPoster calls GET with correct URL and params', async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
     vi.stubGlobal('fetch', fetchMock)

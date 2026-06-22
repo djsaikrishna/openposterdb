@@ -50,7 +50,7 @@ const props = defineProps<{
   listFn: (page: number, pageSize: number) => Promise<Response>
   imageFn: (key: string) => Promise<Response>
   fetchFn: (idType: string, idValue: string) => Promise<Response>
-  deleteFn: (idType: string, idValue: string) => Promise<Response>
+  deleteFn: (idType: string, idValue: string, scope: 'title' | 'variant') => Promise<Response>
 }>()
 
 const route = useRoute()
@@ -153,28 +153,29 @@ function openFetchModal() {
   fetchModalOpen.value = true
 }
 
-// --- Purge (delete all cached variants of a title) ---
+// --- Purge: this exact variant (the row) or every variant of the title ---
 const deleteOpen = ref(false)
-const deleteTarget = ref<{ idType: string; titleId: string } | null>(null)
-const deleteLoading = ref(false)
+const deleteTarget = ref<{ idType: string; cacheValue: string; titleId: string } | null>(null)
+const deleteLoading = ref<'' | 'title' | 'variant'>('')
 const deleteError = ref('')
 
 function openDelete(cacheKey: string) {
   const { idType, idValue } = parseKey(cacheKey)
-  deleteTarget.value = { idType, titleId: titleIdFromCacheValue(idValue) }
+  deleteTarget.value = { idType, cacheValue: idValue, titleId: titleIdFromCacheValue(idValue) }
   deleteError.value = ''
   deleteOpen.value = true
 }
 
-async function confirmDelete() {
+async function confirmDelete(scope: 'title' | 'variant') {
   const target = deleteTarget.value
-  if (!target) return
+  if (!target || deleteLoading.value) return
 
-  deleteLoading.value = true
+  deleteLoading.value = scope
   deleteError.value = ''
 
   try {
-    const res = await props.deleteFn(target.idType, target.titleId)
+    const idValue = scope === 'variant' ? target.cacheValue : target.titleId
+    const res = await props.deleteFn(target.idType, idValue, scope)
     if (!res.ok) {
       const text = await res.text()
       try { deleteError.value = JSON.parse(text).error || text } catch { deleteError.value = text || `Error ${res.status}` }
@@ -186,7 +187,7 @@ async function confirmDelete() {
   } catch (e) {
     deleteError.value = e instanceof Error ? e.message : 'Purge failed'
   } finally {
-    deleteLoading.value = false
+    deleteLoading.value = ''
   }
 }
 
@@ -334,22 +335,29 @@ const skeletonClass = computed(() => {
     </Dialog>
 
     <Dialog :open="deleteOpen" @update:open="(v: boolean) => { if (!v) { deleteOpen = false; deleteTarget = null } }">
-      <DialogContent class="max-w-sm">
+      <DialogContent class="max-w-md">
         <DialogHeader>
           <DialogTitle>Purge {{ kindLabel }}</DialogTitle>
         </DialogHeader>
         <div class="space-y-4">
           <p class="text-sm text-muted-foreground">
-            Remove every cached {{ kindLabel }} variant for
-            <span class="font-mono break-all">{{ deleteTarget?.idType }}/{{ deleteTarget?.titleId }}</span>?
-            It will be regenerated on the next request.
+            Remove just this one cached {{ kindLabel }} variant, or every variant of
+            this title? Anything removed is regenerated on the next request.
           </p>
+          <div class="space-y-1 rounded-md border bg-muted/40 p-2 text-xs font-mono break-all">
+            <p><span class="text-muted-foreground">this variant: </span>{{ deleteTarget?.idType }}/{{ deleteTarget?.cacheValue }}</p>
+            <p><span class="text-muted-foreground">entire title: </span>{{ deleteTarget?.idType }}/{{ deleteTarget?.titleId }}</p>
+          </div>
           <p v-if="deleteError" class="text-sm text-destructive">{{ deleteError }}</p>
-          <div class="flex justify-end gap-2">
-            <Button variant="outline" :disabled="deleteLoading" @click="deleteOpen = false">Cancel</Button>
-            <Button variant="destructive" :disabled="deleteLoading" @click="confirmDelete">
-              <Loader2 v-if="deleteLoading" class="size-4 animate-spin mr-1" />
-              Purge
+          <div class="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" :disabled="!!deleteLoading" @click="deleteOpen = false">Cancel</Button>
+            <Button variant="outline" class="text-destructive hover:text-destructive" :disabled="!!deleteLoading" @click="confirmDelete('variant')">
+              <Loader2 v-if="deleteLoading === 'variant'" class="size-4 animate-spin mr-1" />
+              This variant
+            </Button>
+            <Button variant="destructive" :disabled="!!deleteLoading" @click="confirmDelete('title')">
+              <Loader2 v-if="deleteLoading === 'title'" class="size-4 animate-spin mr-1" />
+              Entire title
             </Button>
           </div>
         </div>

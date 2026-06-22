@@ -239,6 +239,25 @@ pub async fn purge_title_files(
     Ok(removed)
 }
 
+/// Delete a single rendered-variant file:
+/// `{cache_dir}/{subdir}/{id_type}/{cache_value}.{ext}`. `cache_value` is the
+/// full `{id_value}{variant}{suffix}` form. Returns 1 if a file was removed, 0
+/// if it didn't exist. [`typed_cache_path`] validates `id_type`/`cache_value`
+/// as safe path components.
+pub async fn purge_variant_file(
+    cache_dir: &str,
+    image_type: ImageType,
+    id_type: &str,
+    cache_value: &str,
+) -> Result<u64, AppError> {
+    let path = typed_cache_path(cache_dir, image_type, id_type, cache_value)?;
+    match fs::remove_file(&path).await {
+        Ok(()) => Ok(1),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+        Err(e) => Err(AppError::Io(e)),
+    }
+}
+
 /// Remove all on-disk cache contents: rendered images (posters/logos/backdrops/
 /// episodes), raw downloads under `base/`, and admin preview thumbnails. The
 /// directories are recreated lazily by [`write`]. Returns the number of

@@ -1955,6 +1955,25 @@ pub async fn delete_image_meta_for_title(
     Ok(result.rows_affected)
 }
 
+/// Delete a single `image_meta` row by its exact cache_key (single-variant
+/// purge), scoped to the given image kind so a kind-mismatched request can't
+/// touch another kind's row. Returns the number of rows removed (0 or 1).
+pub async fn delete_image_meta_exact(
+    db: &impl ConnectionTrait,
+    image_type: crate::cache::ImageType,
+    cache_key: &str,
+) -> Result<u64, AppError> {
+    use crate::entity::image_meta;
+    use sea_orm::{ColumnTrait, QueryFilter};
+    let result = image_meta::Entity::delete_many()
+        .filter(image_meta::Column::CacheKey.eq(cache_key))
+        .filter(image_meta::Column::ImageType.eq(image_type.db_value()))
+        .exec(db)
+        .await
+        .map_err(|e| AppError::DbError(e.to_string()))?;
+    Ok(result.rows_affected)
+}
+
 /// Delete the `available_ratings` index row for one title (`id_key` =
 /// `{id_type}/{id_value}`). Returns the number of rows removed (0 or 1).
 pub async fn delete_available_ratings(

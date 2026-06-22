@@ -121,6 +121,18 @@ function buildUrl(path: string, params: Record<string, string | number | undefin
 
 // --- Typed API service layer ---
 
+/** Purge scope: a whole logical title (all variants) or a single rendered variant. */
+export type PurgeScope = 'title' | 'variant'
+
+/**
+ * Build a per-title / per-variant purge URL. For `title` scope `idValue` is the
+ * bare title id; for `variant` scope it's the full cache value (one row's key).
+ */
+function purgeUrl(kind: string, idType: string, idValue: string, scope: PurgeScope): string {
+  const path = `/api/admin/${kind}/${idType}/${encodeURIComponent(idValue)}`
+  return scope === 'variant' ? `${path}?scope=variant` : path
+}
+
 export const adminApi = {
   getStats: (): Promise<Response> => get('/api/admin/stats'),
   purgeAll: (): Promise<Response> => post('/api/admin/cache/purge'),
@@ -132,32 +144,32 @@ export const adminApi = {
   updateSettings: (settings: Partial<SaveSettingsPayload> & { image_source: string; free_api_key_enabled?: boolean }): Promise<Response> => put('/api/admin/settings', settings),
   fetchPoster: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/posters/${idType}/${idValue}/fetch`),
-  purgePoster: (idType: string, idValue: string): Promise<Response> =>
-    del(`/api/admin/posters/${idType}/${encodeURIComponent(idValue)}`),
+  purgePoster: (idType: string, idValue: string, scope: PurgeScope = 'title'): Promise<Response> =>
+    del(purgeUrl('posters', idType, idValue, scope)),
   getLogos: (page: number, pageSize: number): Promise<Response> =>
     get(`/api/admin/logos?page=${page}&page_size=${pageSize}`),
   getLogoImage: (key: string): Promise<Response> =>
     get(`/api/admin/logos/${key}`),
   fetchLogo: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/logos/${idType}/${idValue}/fetch`),
-  purgeLogo: (idType: string, idValue: string): Promise<Response> =>
-    del(`/api/admin/logos/${idType}/${encodeURIComponent(idValue)}`),
+  purgeLogo: (idType: string, idValue: string, scope: PurgeScope = 'title'): Promise<Response> =>
+    del(purgeUrl('logos', idType, idValue, scope)),
   getBackdrops: (page: number, pageSize: number): Promise<Response> =>
     get(`/api/admin/backdrops?page=${page}&page_size=${pageSize}`),
   getBackdropImage: (key: string): Promise<Response> =>
     get(`/api/admin/backdrops/${key}`),
   fetchBackdrop: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/backdrops/${idType}/${idValue}/fetch`),
-  purgeBackdrop: (idType: string, idValue: string): Promise<Response> =>
-    del(`/api/admin/backdrops/${idType}/${encodeURIComponent(idValue)}`),
+  purgeBackdrop: (idType: string, idValue: string, scope: PurgeScope = 'title'): Promise<Response> =>
+    del(purgeUrl('backdrops', idType, idValue, scope)),
   getEpisodes: (page: number, pageSize: number): Promise<Response> =>
     get(`/api/admin/episodes?page=${page}&page_size=${pageSize}`),
   getEpisodeImage: (key: string): Promise<Response> =>
     get(`/api/admin/episodes/${key}/image`),
   fetchEpisode: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/episodes/${idType}/${idValue}/fetch`),
-  purgeEpisode: (idType: string, idValue: string): Promise<Response> =>
-    del(`/api/admin/episodes/${idType}/${encodeURIComponent(idValue)}`),
+  purgeEpisode: (idType: string, idValue: string, scope: PurgeScope = 'title'): Promise<Response> =>
+    del(purgeUrl('episodes', idType, idValue, scope)),
   previewPoster: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string, ratingsExclude?: string, posterSplit?: boolean, badgeShape?: string, badgeBackground?: string, posterFit?: string): Promise<Response> =>
     get(buildUrl('/api/admin/preview/poster', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, ratings_exclude: ratingsExclude, position: posterPosition, badge_style: badgeStyle, label_style: labelStyle, badge_direction: badgeDirection, badge_size: badgeSize, split: posterSplit ? 'true' : undefined, badge_shape: badgeShape, badge_background: badgeBackground, fit: posterFit })),
   previewLogo: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, ratingsExclude?: string, badgeShape?: string, badgeBackground?: string): Promise<Response> =>

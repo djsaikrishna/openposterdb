@@ -230,8 +230,7 @@ describe('ImageListView', () => {
     expect(mocks.fetchFn).toHaveBeenCalledWith('imdb', 'tt0111161')
   })
 
-  it('purges a title via the row delete button', async () => {
-    const mocks = makeMocks()
+  async function openPurgeDialog(mocks: ReturnType<typeof makeMocks>) {
     mocks.listFn.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({
@@ -255,13 +254,30 @@ describe('ImageListView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Purge poster')
+    return wrapper
+  }
 
-    const confirmButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Purge')
-    await confirmButton!.trigger('click')
+  it('purges the whole title via the "Entire title" button (bare title id)', async () => {
+    const mocks = makeMocks()
+    const wrapper = await openPurgeDialog(mocks)
+
+    const titleButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Entire title')
+    await titleButton!.trigger('click')
     await flushPromises()
 
-    // The full cache value carries a variant + ratings suffix; the purge targets
-    // the bare title id only.
-    expect(mocks.deleteFn).toHaveBeenCalledWith('imdb', 'tt0111161')
+    // The full cache value carries a variant + ratings suffix; the title purge
+    // targets the bare title id.
+    expect(mocks.deleteFn).toHaveBeenCalledWith('imdb', 'tt0111161', 'title')
+  })
+
+  it('purges a single variant via the "This variant" button (full cache value)', async () => {
+    const mocks = makeMocks()
+    const wrapper = await openPurgeDialog(mocks)
+
+    const variantButton = wrapper.findAll('button').find((b) => b.text().trim() === 'This variant')
+    await variantButton!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.deleteFn).toHaveBeenCalledWith('imdb', 'tt0111161_t_de@imc', 'variant')
   })
 })

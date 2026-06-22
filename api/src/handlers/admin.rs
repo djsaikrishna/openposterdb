@@ -573,6 +573,23 @@ pub struct PurgeAllResponse {
     pub ratings_deleted: u64,
 }
 
+/// Scope of a `DELETE` purge: an entire logical title (all rendered variants of
+/// one image kind — the default) or a single rendered variant (one exact cache
+/// key, i.e. one row in the admin list).
+#[derive(Deserialize, Default, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PurgeScope {
+    #[default]
+    Title,
+    Variant,
+}
+
+#[derive(Deserialize)]
+pub struct PurgeQuery {
+    #[serde(default)]
+    pub scope: PurgeScope,
+}
+
 /// Purge every cached variant of one logical title for a single image kind,
 /// across all cache layers: on-disk rendered files, SQLite metadata
 /// (`image_meta` + the shared `available_ratings` index), and the in-memory
@@ -642,32 +659,89 @@ async fn purge_title(
     }))
 }
 
+/// Purge a single rendered variant — one exact cache key (one row in the admin
+/// list) — without disturbing the rest of the title. Clears just that file, its
+/// `image_meta` row, and its `image_mem_cache` / `image_inflight` entries; the
+/// title's shared `available_ratings` index and resolution caches are left intact.
+///
+/// `cache_value` is the full `{id_value}{variant}{suffix}` form (the value the
+/// admin list shows as the row's "ID Value"), so the matching cache key is
+/// `{id_type}/{cache_value}` and the file is `{subdir}/{id_type}/{cache_value}.{ext}`.
+async fn purge_variant(
+    state: &AppState,
+    image_type: cache::ImageType,
+    id_type: &str,
+    cache_value: &str,
+) -> Result<Json<PurgeTitleResponse>, AppError> {
+    crate::id::IdType::parse(id_type)?;
+    cache::validate_id_value(cache_value)?;
+
+    let cache_key = format!("{id_type}/{cache_value}");
+
+    let files_deleted = if state.config.external_cache_only {
+        0
+    } else {
+        cache::purge_variant_file(&state.config.cache_dir, image_type, id_type, cache_value).await?
+    };
+
+    let meta_deleted = db::delete_image_meta_exact(&state.db, image_type, &cache_key).await?;
+
+    state.image_mem_cache.invalidate(&cache_key).await;
+    state.image_inflight.invalidate(&cache_key).await;
+
+    Ok(Json(PurgeTitleResponse {
+        ok: true,
+        external_cache_only: state.config.external_cache_only,
+        files_deleted,
+        meta_deleted,
+        ratings_deleted: 0,
+    }))
+}
+
+/// Route a `DELETE` purge to the title-wide or single-variant path by `?scope=`.
+async fn purge_dispatch(
+    state: &AppState,
+    image_type: cache::ImageType,
+    id_type: &str,
+    id_value: &str,
+    scope: PurgeScope,
+) -> Result<Json<PurgeTitleResponse>, AppError> {
+    match scope {
+        PurgeScope::Title => purge_title(state, image_type, id_type, id_value).await,
+        PurgeScope::Variant => purge_variant(state, image_type, id_type, id_value).await,
+    }
+}
+
 pub async fn purge_poster(
     State(state): State<Arc<AppState>>,
     Path((id_type, id_value)): Path<(String, String)>,
+    Query(q): Query<PurgeQuery>,
 ) -> Result<Json<PurgeTitleResponse>, AppError> {
-    purge_title(&state, cache::ImageType::Poster, &id_type, &id_value).await
+    purge_dispatch(&state, cache::ImageType::Poster, &id_type, &id_value, q.scope).await
 }
 
 pub async fn purge_logo(
     State(state): State<Arc<AppState>>,
     Path((id_type, id_value)): Path<(String, String)>,
+    Query(q): Query<PurgeQuery>,
 ) -> Result<Json<PurgeTitleResponse>, AppError> {
-    purge_title(&state, cache::ImageType::Logo, &id_type, &id_value).await
+    purge_dispatch(&state, cache::ImageType::Logo, &id_type, &id_value, q.scope).await
 }
 
 pub async fn purge_backdrop(
     State(state): State<Arc<AppState>>,
     Path((id_type, id_value)): Path<(String, String)>,
+    Query(q): Query<PurgeQuery>,
 ) -> Result<Json<PurgeTitleResponse>, AppError> {
-    purge_title(&state, cache::ImageType::Backdrop, &id_type, &id_value).await
+    purge_dispatch(&state, cache::ImageType::Backdrop, &id_type, &id_value, q.scope).await
 }
 
 pub async fn purge_episode(
     State(state): State<Arc<AppState>>,
     Path((id_type, id_value)): Path<(String, String)>,
+    Query(q): Query<PurgeQuery>,
 ) -> Result<Json<PurgeTitleResponse>, AppError> {
-    purge_title(&state, cache::ImageType::Episode, &id_type, &id_value).await
+    purge_dispatch(&state, cache::ImageType::Episode, &id_type, &id_value, q.scope).await
 }
 
 /// Clear the entire image cache: all rendered files + raw downloads on disk,
