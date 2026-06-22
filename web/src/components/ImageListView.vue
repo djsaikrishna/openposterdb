@@ -2,7 +2,8 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
-import { Eye, Loader2, Download } from 'lucide-vue-next'
+import { Eye, Loader2, Download, Trash2 } from 'lucide-vue-next'
+import { titleIdFromCacheValue } from '@/lib/utils'
 import RefreshButton from '@/components/RefreshButton.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,6 +50,7 @@ const props = defineProps<{
   listFn: (page: number, pageSize: number) => Promise<Response>
   imageFn: (key: string) => Promise<Response>
   fetchFn: (idType: string, idValue: string) => Promise<Response>
+  deleteFn: (idType: string, idValue: string) => Promise<Response>
 }>()
 
 const route = useRoute()
@@ -151,6 +153,43 @@ function openFetchModal() {
   fetchModalOpen.value = true
 }
 
+// --- Purge (delete all cached variants of a title) ---
+const deleteOpen = ref(false)
+const deleteTarget = ref<{ idType: string; titleId: string } | null>(null)
+const deleteLoading = ref(false)
+const deleteError = ref('')
+
+function openDelete(cacheKey: string) {
+  const { idType, idValue } = parseKey(cacheKey)
+  deleteTarget.value = { idType, titleId: titleIdFromCacheValue(idValue) }
+  deleteError.value = ''
+  deleteOpen.value = true
+}
+
+async function confirmDelete() {
+  const target = deleteTarget.value
+  if (!target) return
+
+  deleteLoading.value = true
+  deleteError.value = ''
+
+  try {
+    const res = await props.deleteFn(target.idType, target.titleId)
+    if (!res.ok) {
+      const text = await res.text()
+      try { deleteError.value = JSON.parse(text).error || text } catch { deleteError.value = text || `Error ${res.status}` }
+      return
+    }
+    deleteOpen.value = false
+    deleteTarget.value = null
+    refetch()
+  } catch (e) {
+    deleteError.value = e instanceof Error ? e.message : 'Purge failed'
+  } finally {
+    deleteLoading.value = false
+  }
+}
+
 function parseKey(cacheKey: string) {
   const idx = cacheKey.indexOf('/')
   if (idx === -1) return { idType: cacheKey, idValue: '' }
@@ -217,11 +256,12 @@ const skeletonClass = computed(() => {
             <TableHead>Release Date</TableHead>
             <TableHead>Last Updated</TableHead>
             <TableHead>Created</TableHead>
+            <TableHead class="w-10 text-right"><span class="sr-only">Actions</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           <TableRow v-if="data.items.length === 0">
-            <TableCell colspan="6" class="text-center text-muted-foreground">No {{ kindLabelPlural }} cached yet.</TableCell>
+            <TableCell colspan="7" class="text-center text-muted-foreground">No {{ kindLabelPlural }} cached yet.</TableCell>
           </TableRow>
           <TableRow v-for="item in data.items" :key="item.cache_key" class="cursor-pointer" @click="openPreview(item.cache_key)">
             <TableCell>
@@ -232,6 +272,18 @@ const skeletonClass = computed(() => {
             <TableCell>{{ item.release_date || '—' }}</TableCell>
             <TableCell>{{ relativeTime(item.updated_at) }}</TableCell>
             <TableCell>{{ formatDate(item.created_at) }}</TableCell>
+            <TableCell class="text-right">
+              <Button
+                variant="ghost"
+                size="icon"
+                class="size-8 text-muted-foreground hover:text-destructive"
+                :aria-label="`Purge ${kindLabel}`"
+                :title="`Purge cached ${kindLabel}`"
+                @click.stop="openDelete(item.cache_key)"
+              >
+                <Trash2 class="size-4" />
+              </Button>
+            </TableCell>
           </TableRow>
         </TableBody>
       </Table>
@@ -278,6 +330,29 @@ const skeletonClass = computed(() => {
             </Button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="deleteOpen" @update:open="(v: boolean) => { if (!v) { deleteOpen = false; deleteTarget = null } }">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Purge {{ kindLabel }}</DialogTitle>
+        </DialogHeader>
+        <div class="space-y-4">
+          <p class="text-sm text-muted-foreground">
+            Remove every cached {{ kindLabel }} variant for
+            <span class="font-mono break-all">{{ deleteTarget?.idType }}/{{ deleteTarget?.titleId }}</span>?
+            It will be regenerated on the next request.
+          </p>
+          <p v-if="deleteError" class="text-sm text-destructive">{{ deleteError }}</p>
+          <div class="flex justify-end gap-2">
+            <Button variant="outline" :disabled="deleteLoading" @click="deleteOpen = false">Cancel</Button>
+            <Button variant="destructive" :disabled="deleteLoading" @click="confirmDelete">
+              <Loader2 v-if="deleteLoading" class="size-4 animate-spin mr-1" />
+              Purge
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
 

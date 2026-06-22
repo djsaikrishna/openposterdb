@@ -649,3 +649,230 @@ async fn update_settings_rejects_invalid_poster_position() {
     // Invalid enum values are rejected at deserialization (422), not validation (400)
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+// --- Cache purge endpoints ---
+
+#[tokio::test]
+async fn purge_endpoints_require_auth() {
+    let (app, _state) = common::setup_test_app().await;
+
+    let cases = [
+        ("POST", "/api/admin/cache/purge"),
+        ("DELETE", "/api/admin/posters/imdb/tt0111161"),
+        ("DELETE", "/api/admin/logos/imdb/tt0111161"),
+        ("DELETE", "/api/admin/backdrops/imdb/tt0111161"),
+        ("DELETE", "/api/admin/episodes/imdb/tt0111161"),
+    ];
+
+    for (method, uri) in cases {
+        let req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{method} {uri} should require auth");
+    }
+}
+
+#[tokio::test]
+async fn purge_poster_rejects_invalid_id_type() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let req = Request::builder()
+        .method("DELETE")
+        .uri("/api/admin/posters/invalid/tt0111161")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn purge_poster_clears_all_layers_and_spares_siblings() {
+    use openposterdb_api::cache::{self, ImageType, MemCacheEntry};
+    use openposterdb_api::entity::{available_ratings, image_meta};
+    use sea_orm::EntityTrait;
+    use std::time::Instant;
+
+    let cache_dir = std::env::temp_dir()
+        .join(format!("opdb-purge-title-test-{}", std::process::id()))
+        .to_string_lossy()
+        .to_string();
+    let _ = std::fs::remove_dir_all(&cache_dir);
+
+    let (app, state) = common::setup_test_app_with_options(common::TestAppOptions {
+        cache_dir_override: Some(cache_dir.clone()),
+        ..Default::default()
+    })
+    .await;
+    let token = common::setup_admin(&app).await;
+
+    let target_key = "imdb/tt123@imc";
+    let sibling_key = "imdb/tt1234567@imc"; // longer id — must NOT be captured
+    let logo_key = "imdb/tt123_l_t_en@i"; // same title, different kind — must survive
+
+    // Disk: two posters + a logo.
+    for value in ["tt123@imc", "tt1234567@imc"] {
+        let p = cache::typed_cache_path(&cache_dir, ImageType::Poster, "imdb", value).unwrap();
+        cache::write(&p, b"x").await.unwrap();
+    }
+    let logo_path = cache::typed_cache_path(&cache_dir, ImageType::Logo, "imdb", "tt123_l_t_en@i").unwrap();
+    cache::write(&logo_path, b"x").await.unwrap();
+
+    // SQLite image_meta + available_ratings.
+    cache::upsert_meta_db(&state.db, target_key, None, ImageType::Poster).await.unwrap();
+    cache::upsert_meta_db(&state.db, sibling_key, None, ImageType::Poster).await.unwrap();
+    cache::upsert_meta_db(&state.db, logo_key, None, ImageType::Logo).await.unwrap();
+    cache::upsert_available_ratings(&state.db, "imdb/tt123", "imc", None).await.unwrap();
+
+    // In-memory render cache.
+    state
+        .image_mem_cache
+        .insert(target_key.to_string(), MemCacheEntry { bytes: vec![0u8; 4].into(), last_checked: Instant::now() })
+        .await;
+    state
+        .image_mem_cache
+        .insert(sibling_key.to_string(), MemCacheEntry { bytes: vec![0u8; 4].into(), last_checked: Instant::now() })
+        .await;
+    state.image_mem_cache.run_pending_tasks().await;
+
+    // In-flight render-result cache (request coalescing) — must be evicted too,
+    // or a request within its 30s TTL would re-serve the stale bytes.
+    state.image_inflight.insert(target_key.to_string(), vec![0u8; 4].into()).await;
+    state.image_inflight.insert(sibling_key.to_string(), vec![0u8; 4].into()).await;
+    state.image_inflight.run_pending_tasks().await;
+
+    // Purge the target title's posters.
+    let req = Request::builder()
+        .method("DELETE")
+        .uri("/api/admin/posters/imdb/tt123")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["files_deleted"], 1);
+    assert_eq!(json["meta_deleted"], 1);
+    assert_eq!(json["ratings_deleted"], 1);
+    assert_eq!(json["external_cache_only"], false);
+
+    // Disk: target removed; sibling + logo intact.
+    assert!(!std::path::Path::new(&cache_dir).join("posters/imdb/tt123@imc.jpg").exists());
+    assert!(std::path::Path::new(&cache_dir).join("posters/imdb/tt1234567@imc.jpg").exists());
+    assert!(std::path::Path::new(&cache_dir).join("logos/imdb/tt123_l_t_en@i.png").exists());
+
+    // DB: target row gone; sibling + logo remain; ratings row gone.
+    assert!(image_meta::Entity::find_by_id(target_key).one(&state.db).await.unwrap().is_none());
+    assert!(image_meta::Entity::find_by_id(sibling_key).one(&state.db).await.unwrap().is_some());
+    assert!(image_meta::Entity::find_by_id(logo_key).one(&state.db).await.unwrap().is_some());
+    assert!(available_ratings::Entity::find_by_id("imdb/tt123").one(&state.db).await.unwrap().is_none());
+
+    // In-memory: target evicted, sibling retained — in both render and in-flight caches.
+    state.image_mem_cache.run_pending_tasks().await;
+    state.image_inflight.run_pending_tasks().await;
+    assert!(state.image_mem_cache.get(target_key).await.is_none());
+    assert!(state.image_mem_cache.get(sibling_key).await.is_some());
+    assert!(state.image_inflight.get(target_key).await.is_none());
+    assert!(state.image_inflight.get(sibling_key).await.is_some());
+
+    let _ = std::fs::remove_dir_all(&cache_dir);
+}
+
+#[tokio::test]
+async fn purge_all_clears_disk_db_and_memory() {
+    use openposterdb_api::cache::{self, ImageType, MemCacheEntry};
+    use openposterdb_api::services::db;
+    use std::time::Instant;
+
+    let cache_dir = std::env::temp_dir()
+        .join(format!("opdb-purge-all-test-{}", std::process::id()))
+        .to_string_lossy()
+        .to_string();
+    let _ = std::fs::remove_dir_all(&cache_dir);
+
+    let (app, state) = common::setup_test_app_with_options(common::TestAppOptions {
+        cache_dir_override: Some(cache_dir.clone()),
+        ..Default::default()
+    })
+    .await;
+    let token = common::setup_admin(&app).await;
+
+    let poster_path = cache::typed_cache_path(&cache_dir, ImageType::Poster, "imdb", "tt1@i").unwrap();
+    cache::write(&poster_path, b"x").await.unwrap();
+    cache::upsert_meta_db(&state.db, "imdb/tt1@i", None, ImageType::Poster).await.unwrap();
+    cache::upsert_meta_db(&state.db, "imdb/tt2_l@i", None, ImageType::Logo).await.unwrap();
+    cache::upsert_available_ratings(&state.db, "imdb/tt1", "i", None).await.unwrap();
+    state
+        .image_mem_cache
+        .insert("imdb/tt1@i".to_string(), MemCacheEntry { bytes: vec![0u8; 4].into(), last_checked: Instant::now() })
+        .await;
+    state.image_mem_cache.run_pending_tasks().await;
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/admin/cache/purge")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["meta_deleted"], 2);
+    assert_eq!(json["ratings_deleted"], 1);
+    assert_eq!(json["external_cache_only"], false);
+
+    assert_eq!(db::count_image_meta(&state.db).await.unwrap(), 0);
+    assert!(!std::path::Path::new(&cache_dir).join("posters").exists());
+
+    state.image_mem_cache.run_pending_tasks().await;
+    assert!(state.image_mem_cache.get("imdb/tt1@i").await.is_none());
+
+    let _ = std::fs::remove_dir_all(&cache_dir);
+}
+
+#[tokio::test]
+async fn purge_title_external_cache_only_clears_db_without_disk() {
+    use openposterdb_api::cache::{self, ImageType};
+    use openposterdb_api::entity::image_meta;
+    use sea_orm::EntityTrait;
+
+    let cache_dir = std::env::temp_dir()
+        .join(format!("opdb-purge-eco-test-{}", std::process::id()))
+        .to_string_lossy()
+        .to_string();
+    let _ = std::fs::remove_dir_all(&cache_dir);
+
+    let (app, state) = common::setup_test_app_with_options(common::TestAppOptions {
+        external_cache_only: true,
+        cache_dir_override: Some(cache_dir.clone()),
+        ..Default::default()
+    })
+    .await;
+    let token = common::setup_admin(&app).await;
+
+    cache::upsert_meta_db(&state.db, "imdb/tt9@i", None, ImageType::Poster).await.unwrap();
+
+    let req = Request::builder()
+        .method("DELETE")
+        .uri("/api/admin/posters/imdb/tt9")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["external_cache_only"], true);
+    assert_eq!(json["files_deleted"], 0);
+    assert_eq!(json["meta_deleted"], 1);
+
+    assert!(image_meta::Entity::find_by_id("imdb/tt9@i").one(&state.db).await.unwrap().is_none());
+    // No cache directory is ever created under EXTERNAL_CACHE_ONLY.
+    assert!(!std::path::Path::new(&cache_dir).exists());
+}

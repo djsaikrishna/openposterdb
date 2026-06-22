@@ -182,6 +182,80 @@ pub async fn write(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
     Ok(())
 }
 
+/// True if the rendered filename base `cache_value` (no extension) belongs to the
+/// logical title identified by `id_value`.
+///
+/// Renders are named `{id_value}{variant}{suffix}`, where `variant` either is
+/// empty or starts with `_` (e.g. `_t_de`, `_f_tl`, `_l`, `_b`) and `suffix`
+/// always starts with `@` (the ratings token). The only characters that can
+/// immediately follow `id_value` are therefore `_` or `@`, so we anchor on those
+/// delimiters — a bare prefix match would let title `tt123` wrongly capture
+/// `tt1234567`.
+pub fn title_file_match(cache_value: &str, id_value: &str) -> bool {
+    match cache_value.strip_prefix(id_value) {
+        Some(rest) => rest.is_empty() || rest.starts_with('_') || rest.starts_with('@'),
+        None => false,
+    }
+}
+
+/// Delete every rendered file for one logical title under
+/// `{cache_dir}/{subdir}/{id_type}/`. Returns the number of files removed; a
+/// missing directory (e.g. nothing cached yet, or `EXTERNAL_CACHE_ONLY`) yields 0.
+pub async fn purge_title_files(
+    cache_dir: &str,
+    image_type: ImageType,
+    id_type: &str,
+    id_value: &str,
+) -> Result<u64, AppError> {
+    // `id_type` is part of the directory path, so it must be a safe component.
+    // `id_value` is only ever string-matched against filenames (never joined into
+    // a path), and every removal targets a trusted `DirEntry::path()` within this
+    // directory, so the canonicalize-and-verify guard used for reads is unneeded here.
+    if !is_safe_path_component(id_type) {
+        return Err(AppError::BadRequest("invalid id type".into()));
+    }
+    let dir = Path::new(cache_dir).join(image_type.subdir()).join(id_type);
+    let mut read_dir = match fs::read_dir(&dir).await {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(AppError::Io(e)),
+    };
+
+    let ext_suffix = format!(".{}", image_type.ext());
+    let mut removed = 0u64;
+    while let Some(entry) = read_dir.next_entry().await? {
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else { continue };
+        // Only consider this kind's image files; skips subdirectories/stray files.
+        let Some(base) = name.strip_suffix(&ext_suffix) else { continue };
+        if title_file_match(base, id_value) {
+            match fs::remove_file(entry.path()).await {
+                Ok(()) => removed += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(AppError::Io(e)),
+            }
+        }
+    }
+    Ok(removed)
+}
+
+/// Remove all on-disk cache contents: rendered images (posters/logos/backdrops/
+/// episodes), raw downloads under `base/`, and admin preview thumbnails. The
+/// directories are recreated lazily by [`write`]. Returns the number of
+/// top-level cache subdirectories that were removed (missing ones are skipped).
+pub async fn clear_all_files(cache_dir: &str) -> Result<u64, AppError> {
+    let mut removed = 0u64;
+    for sub in ["posters", "logos", "backdrops", "episodes", "base", "preview"] {
+        let dir = Path::new(cache_dir).join(sub);
+        match fs::remove_dir_all(&dir).await {
+            Ok(()) => removed += 1,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(AppError::Io(e)),
+        }
+    }
+    Ok(removed)
+}
+
 pub async fn read_meta_db(db: &DatabaseConnection, cache_key: &str) -> Option<String> {
     image_meta::Entity::find_by_id(cache_key)
         .one(db)
@@ -594,5 +668,28 @@ mod tests {
         assert!(is_leap(2024)); // divisible by 4, not by 100
         assert!(!is_leap(1900)); // divisible by 100, not by 400
         assert!(!is_leap(2023)); // not divisible by 4
+    }
+
+    #[test]
+    fn title_file_match_anchors_on_delimiter() {
+        // Ratings-suffix delimiter (poster default / episode have no variant).
+        assert!(title_file_match("tt123@imc", "tt123"));
+        // Variant delimiters: language poster, fanart, logo, backdrop.
+        assert!(title_file_match("tt123_t_de@imc", "tt123"));
+        assert!(title_file_match("tt123_f_tl@imc", "tt123"));
+        assert!(title_file_match("tt123_l_t_en@i", "tt123"));
+        assert!(title_file_match("tt123_b_t@i.p1", "tt123"));
+        // Bare value (no suffix) — never produced in practice, but allowed.
+        assert!(title_file_match("tt123", "tt123"));
+    }
+
+    #[test]
+    fn title_file_match_rejects_sibling_prefix() {
+        // The crux: a shorter id must NOT capture a longer one.
+        assert!(!title_file_match("tt1234567@imc", "tt123"));
+        assert!(!title_file_match("movie-123@i", "movie-12"));
+        assert!(!title_file_match("tt124@imc", "tt123"));
+        // Unrelated value.
+        assert!(!title_file_match("tt999@imc", "tt123"));
     }
 }

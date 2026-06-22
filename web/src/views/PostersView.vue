@@ -9,5 +9,6 @@ import ImageListView from '@/components/ImageListView.vue'
     :list-fn="adminApi.getPosters"
     :image-fn="adminApi.getPosterImage"
     :fetch-fn="adminApi.fetchPoster"
+    :delete-fn="adminApi.purgePoster"
   />
 </template>

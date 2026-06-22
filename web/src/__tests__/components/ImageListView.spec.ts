@@ -30,6 +30,7 @@ function makeMocks() {
     listFn: vi.fn(),
     imageFn: vi.fn(),
     fetchFn: vi.fn(),
+    deleteFn: vi.fn(),
   }
 }
 
@@ -47,12 +48,13 @@ function mountView(mocks: ReturnType<typeof makeMocks>, kind: 'poster' | 'logo' 
       listFn: mocks.listFn,
       imageFn: mocks.imageFn,
       fetchFn: mocks.fetchFn,
+      deleteFn: mocks.deleteFn,
     },
     global: {
       plugins: [createPinia(), router, [VueQueryPlugin, { queryClient }]],
       stubs: {
         Button: {
-          template: '<button @click="$emit(\'click\')" :disabled="disabled"><slot /></button>',
+          template: '<button @click="$emit(\'click\', $event)" :disabled="disabled"><slot /></button>',
           props: ['disabled', 'variant', 'size', 'type'],
         },
         Skeleton: { template: '<div data-testid="skeleton" />' },
@@ -79,6 +81,7 @@ function mountView(mocks: ReturnType<typeof makeMocks>, kind: 'poster' | 'logo' 
         Download: { template: '<span />' },
         Loader2: { template: '<span />' },
         Eye: { template: '<span />' },
+        Trash2: { template: '<span />' },
       },
     },
   })
@@ -225,5 +228,40 @@ describe('ImageListView', () => {
     await flushPromises()
 
     expect(mocks.fetchFn).toHaveBeenCalledWith('imdb', 'tt0111161')
+  })
+
+  it('purges a title via the row delete button', async () => {
+    const mocks = makeMocks()
+    mocks.listFn.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        items: [{ cache_key: 'imdb/tt0111161_t_de@imc', release_date: null, created_at: 1710000000, updated_at: 1710000000 }],
+        total: 1,
+        page: 1,
+        page_size: 50,
+      }),
+    })
+    mocks.deleteFn.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) })
+
+    const wrapper = mountView(mocks)
+    await flushPromises()
+
+    // Confirm dialog is not shown until the row's purge button is clicked.
+    expect(wrapper.text()).not.toContain('Purge poster')
+
+    const purgeButton = wrapper.findAll('button').find((b) => b.attributes('aria-label') === 'Purge poster')
+    expect(purgeButton).toBeDefined()
+    await purgeButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Purge poster')
+
+    const confirmButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Purge')
+    await confirmButton!.trigger('click')
+    await flushPromises()
+
+    // The full cache value carries a variant + ratings suffix; the purge targets
+    // the bare title id only.
+    expect(mocks.deleteFn).toHaveBeenCalledWith('imdb', 'tt0111161')
   })
 })

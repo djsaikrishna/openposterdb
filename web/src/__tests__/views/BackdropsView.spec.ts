@@ -9,6 +9,7 @@ vi.mock('@/lib/api', () => ({
     getBackdrops: vi.fn(),
     getBackdropImage: vi.fn(),
     fetchBackdrop: vi.fn(),
+    purgeBackdrop: vi.fn(),
   },
 }))
 
@@ -28,5 +29,6 @@ describe('BackdropsView', () => {
     expect(imageList.props('listFn')).toBe(adminApi.getBackdrops)
     expect(imageList.props('imageFn')).toBe(adminApi.getBackdropImage)
     expect(imageList.props('fetchFn')).toBe(adminApi.fetchBackdrop)
+    expect(imageList.props('deleteFn')).toBe(adminApi.purgeBackdrop)
   })
 })

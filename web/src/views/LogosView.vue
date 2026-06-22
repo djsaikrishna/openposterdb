@@ -9,5 +9,6 @@ import ImageListView from '@/components/ImageListView.vue'
     :list-fn="adminApi.getLogos"
     :image-fn="adminApi.getLogoImage"
     :fetch-fn="adminApi.fetchLogo"
+    :delete-fn="adminApi.purgeLogo"
   />
 </template>

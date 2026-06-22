@@ -9,6 +9,7 @@ vi.mock('@/lib/api', () => ({
     getEpisodes: vi.fn(),
     getEpisodeImage: vi.fn(),
     fetchEpisode: vi.fn(),
+    purgeEpisode: vi.fn(),
   },
 }))
 
@@ -28,5 +29,6 @@ describe('EpisodesView', () => {
     expect(imageList.props('listFn')).toBe(adminApi.getEpisodes)
     expect(imageList.props('imageFn')).toBe(adminApi.getEpisodeImage)
     expect(imageList.props('fetchFn')).toBe(adminApi.fetchEpisode)
+    expect(imageList.props('deleteFn')).toBe(adminApi.purgeEpisode)
   })
 })
