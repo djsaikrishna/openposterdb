@@ -108,6 +108,16 @@ async function toggleFreeApiKey() {
       </div>
 
       <div class="rounded-lg border p-6 space-y-4">
+        <h2 class="text-lg font-semibold">Cache</h2>
+        <p class="text-sm text-muted-foreground">
+          Clear all cached images (posters, logos, backdrops, episodes). They are
+          regenerated on the next request, so the first load of each title is slower.
+        </p>
+        <ClearCacheButton @cleared="(m: string) => (cacheMessage = m)" />
+        <p v-if="cacheMessage" class="text-sm text-muted-foreground">{{ cacheMessage }}</p>
+      </div>
+
+      <div class="rounded-lg border p-6 space-y-4">
         <h2 class="text-lg font-semibold">Global Image Settings</h2>
         <p class="text-sm text-muted-foreground">
           These defaults apply to all API keys unless overridden per-key.
@@ -124,16 +134,6 @@ async function toggleFreeApiKey() {
           :fetch-backdrop-preview="adminApi.previewBackdrop"
           :fetch-episode-preview="adminApi.previewEpisode"
         />
-      </div>
-
-      <div class="rounded-lg border p-6 space-y-4">
-        <h2 class="text-lg font-semibold">Cache</h2>
-        <p class="text-sm text-muted-foreground">
-          Clear all cached images (posters, logos, backdrops, episodes). They are
-          regenerated on the next request, so the first load of each title is slower.
-        </p>
-        <ClearCacheButton @cleared="(m: string) => (cacheMessage = m)" />
-        <p v-if="cacheMessage" class="text-sm text-muted-foreground">{{ cacheMessage }}</p>
       </div>
     </div>
   </div>
