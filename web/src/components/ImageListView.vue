@@ -51,6 +51,7 @@ const props = defineProps<{
   imageFn: (key: string) => Promise<Response>
   fetchFn: (idType: string, idValue: string) => Promise<Response>
   deleteFn: (idType: string, idValue: string, scope: 'title' | 'variant') => Promise<Response>
+  clearAllFn: () => Promise<Response>
 }>()
 
 const route = useRoute()
@@ -191,6 +192,42 @@ async function confirmDelete(scope: 'title' | 'variant') {
   }
 }
 
+// --- Clear every cached image of this kind ---
+const clearAllOpen = ref(false)
+const clearAllLoading = ref(false)
+const clearAllError = ref('')
+const clearAllMessage = ref('')
+
+function openClearAll() {
+  clearAllError.value = ''
+  clearAllMessage.value = ''
+  clearAllOpen.value = true
+}
+
+async function confirmClearAll() {
+  clearAllLoading.value = true
+  clearAllError.value = ''
+
+  try {
+    const res = await props.clearAllFn()
+    if (!res.ok) {
+      const text = await res.text()
+      try { clearAllError.value = JSON.parse(text).error || text } catch { clearAllError.value = text || `Error ${res.status}` }
+      return
+    }
+    const body = await res.json().catch(() => ({}))
+    const n = body.meta_deleted ?? 0
+    clearAllMessage.value = `Cleared ${n} cached ${n === 1 ? kindLabel.value : kindLabelPlural.value}.`
+    clearAllOpen.value = false
+    page.value = 1
+    refetch()
+  } catch (e) {
+    clearAllError.value = e instanceof Error ? e.message : 'Clear failed'
+  } finally {
+    clearAllLoading.value = false
+  }
+}
+
 function parseKey(cacheKey: string) {
   const idx = cacheKey.indexOf('/')
   if (idx === -1) return { idType: cacheKey, idValue: '' }
@@ -242,8 +279,13 @@ const skeletonClass = computed(() => {
         <Download class="size-4 mr-1" />
         Fetch
       </Button>
+      <Button variant="outline" size="sm" class="text-destructive hover:text-destructive" @click="openClearAll">
+        <Trash2 class="size-4 mr-1" />
+        Clear {{ kindLabelPlural }}
+      </Button>
       <RefreshButton :fetching="isFetching" @refresh="refetch()" />
     </div>
+    <p v-if="clearAllMessage" class="text-sm text-muted-foreground text-right">{{ clearAllMessage }}</p>
     <div v-if="isPending" class="space-y-3">
       <Skeleton v-for="i in 5" :key="i" class="h-10 w-full" />
     </div>
@@ -331,6 +373,28 @@ const skeletonClass = computed(() => {
             </Button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="clearAllOpen" @update:open="(v: boolean) => { if (!v) clearAllOpen = false }">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Clear {{ kindLabelPlural }}</DialogTitle>
+        </DialogHeader>
+        <div class="space-y-4">
+          <p class="text-sm text-muted-foreground">
+            Remove <strong>all</strong> cached {{ kindLabelPlural }}<span v-if="data"> ({{ data.total }} title{{ data.total === 1 ? '' : 's' }})</span>?
+            Other image types are unaffected. They regenerate on the next request.
+          </p>
+          <p v-if="clearAllError" class="text-sm text-destructive">{{ clearAllError }}</p>
+          <div class="flex justify-end gap-2">
+            <Button variant="outline" :disabled="clearAllLoading" @click="clearAllOpen = false">Cancel</Button>
+            <Button variant="destructive" :disabled="clearAllLoading" @click="confirmClearAll">
+              <Loader2 v-if="clearAllLoading" class="size-4 animate-spin mr-1" />
+              Clear {{ kindLabelPlural }}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
 

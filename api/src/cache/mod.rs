@@ -286,22 +286,28 @@ fn purge_stamp() -> String {
     format!("{nanos}-{n}")
 }
 
-/// Clear the on-disk cache *instantly* by atomically renaming each cache subdir
-/// to a sibling temp directory (an O(1) operation regardless of how many files
-/// it holds). New requests immediately miss and re-render. Returns the staged
-/// temp paths — the (potentially slow) recursive removal is the caller's job,
-/// typically [`remove_staged_dirs`] on a background task. Missing subdirs are
-/// skipped.
+/// Clear one cache subdir *instantly* by atomically renaming it to a sibling
+/// temp directory (an O(1) operation regardless of how many files it holds).
+/// New requests immediately miss and re-render. Returns the staged temp path, or
+/// `None` if the subdir doesn't exist. The (potentially slow) recursive removal
+/// is the caller's job — typically [`remove_staged_dirs`] on a background task.
+pub async fn stage_dir_for_clear(cache_dir: &str, subdir: &str) -> Result<Option<PathBuf>, AppError> {
+    let dir = Path::new(cache_dir).join(subdir);
+    let tmp = Path::new(cache_dir).join(format!("{PURGE_PREFIX}{subdir}.{}", purge_stamp()));
+    match fs::rename(&dir, &tmp).await {
+        Ok(()) => Ok(Some(tmp)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(AppError::Io(e)),
+    }
+}
+
+/// Stage every cache subdir aside for clearing (see [`stage_dir_for_clear`]).
+/// Returns the staged temp paths; missing subdirs are skipped.
 pub async fn stage_cache_for_clear(cache_dir: &str) -> Result<Vec<PathBuf>, AppError> {
-    let stamp = purge_stamp();
     let mut staged = Vec::new();
     for sub in CACHE_SUBDIRS {
-        let dir = Path::new(cache_dir).join(sub);
-        let tmp = Path::new(cache_dir).join(format!("{PURGE_PREFIX}{sub}.{stamp}"));
-        match fs::rename(&dir, &tmp).await {
-            Ok(()) => staged.push(tmp),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(AppError::Io(e)),
+        if let Some(tmp) = stage_dir_for_clear(cache_dir, sub).await? {
+            staged.push(tmp);
         }
     }
     Ok(staged)

@@ -746,6 +746,72 @@ pub async fn purge_episode(
     purge_dispatch(&state, cache::ImageType::Episode, &id_type, &id_value, q.scope).await
 }
 
+#[derive(Serialize)]
+pub struct PurgeKindResponse {
+    pub ok: bool,
+    pub external_cache_only: bool,
+    /// Whether the kind's on-disk rendered directory was cleared (false under
+    /// `EXTERNAL_CACHE_ONLY`, or if nothing was cached yet).
+    pub dir_cleared: bool,
+    pub meta_deleted: u64,
+}
+
+/// Clear every cached image of one kind (e.g. all posters). Stages that kind's
+/// rendered directory aside for instant clearing + background removal, deletes
+/// its `image_meta` rows, and drops the in-memory render caches.
+///
+/// The render caches (`image_mem_cache` / `image_inflight`) are keyed by the
+/// full cache key, which has no clean per-kind marker for posters/episodes, so
+/// they're cleared wholesale rather than by a fragile predicate — the other
+/// kinds simply re-render from their still-intact disk/DB layers (the in-memory
+/// cache is a size-bounded hot path, capped by `IMAGE_MEM_CACHE_MB`). The shared
+/// `available_ratings` index and upstream source caches are left untouched.
+async fn clear_kind(
+    state: &AppState,
+    image_type: cache::ImageType,
+) -> Result<Json<PurgeKindResponse>, AppError> {
+    let dir_cleared = if state.config.external_cache_only {
+        false
+    } else {
+        match cache::stage_dir_for_clear(&state.config.cache_dir, image_type.subdir()).await? {
+            Some(staged) => {
+                tokio::spawn(cache::remove_staged_dirs(vec![staged]));
+                true
+            }
+            None => false,
+        }
+    };
+
+    let meta_deleted = db::delete_image_meta_by_kind(&state.db, image_type).await?;
+
+    state.image_mem_cache.invalidate_all();
+    state.image_inflight.invalidate_all();
+    state.image_mem_cache.run_pending_tasks().await;
+
+    Ok(Json(PurgeKindResponse {
+        ok: true,
+        external_cache_only: state.config.external_cache_only,
+        dir_cleared,
+        meta_deleted,
+    }))
+}
+
+pub async fn clear_posters(State(state): State<Arc<AppState>>) -> Result<Json<PurgeKindResponse>, AppError> {
+    clear_kind(&state, cache::ImageType::Poster).await
+}
+
+pub async fn clear_logos(State(state): State<Arc<AppState>>) -> Result<Json<PurgeKindResponse>, AppError> {
+    clear_kind(&state, cache::ImageType::Logo).await
+}
+
+pub async fn clear_backdrops(State(state): State<Arc<AppState>>) -> Result<Json<PurgeKindResponse>, AppError> {
+    clear_kind(&state, cache::ImageType::Backdrop).await
+}
+
+pub async fn clear_episodes(State(state): State<Arc<AppState>>) -> Result<Json<PurgeKindResponse>, AppError> {
+    clear_kind(&state, cache::ImageType::Episode).await
+}
+
 /// Clear the entire image cache: all rendered files + raw downloads on disk,
 /// all `image_meta` / `available_ratings` rows, and every image-related
 /// in-memory cache. Auth and settings caches are intentionally left intact.

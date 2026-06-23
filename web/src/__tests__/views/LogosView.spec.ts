@@ -10,6 +10,7 @@ vi.mock('@/lib/api', () => ({
     getLogoImage: vi.fn(),
     fetchLogo: vi.fn(),
     purgeLogo: vi.fn(),
+    clearLogos: vi.fn(),
   },
 }))
 
@@ -30,5 +31,6 @@ describe('LogosView', () => {
     expect(imageList.props('imageFn')).toBe(adminApi.getLogoImage)
     expect(imageList.props('fetchFn')).toBe(adminApi.fetchLogo)
     expect(imageList.props('deleteFn')).toBe(adminApi.purgeLogo)
+    expect(imageList.props('clearAllFn')).toBe(adminApi.clearLogos)
   })
 })

@@ -136,6 +136,10 @@ function purgeUrl(kind: string, idType: string, idValue: string, scope: PurgeSco
 export const adminApi = {
   getStats: (): Promise<Response> => get('/api/admin/stats'),
   purgeAll: (): Promise<Response> => post('/api/admin/cache/purge'),
+  clearPosters: (): Promise<Response> => del('/api/admin/posters'),
+  clearLogos: (): Promise<Response> => del('/api/admin/logos'),
+  clearBackdrops: (): Promise<Response> => del('/api/admin/backdrops'),
+  clearEpisodes: (): Promise<Response> => del('/api/admin/episodes'),
   getPosters: (page: number, pageSize: number): Promise<Response> =>
     get(`/api/admin/posters?page=${page}&page_size=${pageSize}`),
   getPosterImage: (key: string): Promise<Response> =>

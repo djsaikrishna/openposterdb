@@ -1988,6 +1988,22 @@ pub async fn delete_available_ratings(
     Ok(result.rows_affected)
 }
 
+/// Delete all `image_meta` rows of one image kind (clear-by-kind purge).
+/// Returns the number of rows removed.
+pub async fn delete_image_meta_by_kind(
+    db: &impl ConnectionTrait,
+    image_type: crate::cache::ImageType,
+) -> Result<u64, AppError> {
+    use crate::entity::image_meta;
+    use sea_orm::{ColumnTrait, QueryFilter};
+    let result = image_meta::Entity::delete_many()
+        .filter(image_meta::Column::ImageType.eq(image_type.db_value()))
+        .exec(db)
+        .await
+        .map_err(|e| AppError::DbError(e.to_string()))?;
+    Ok(result.rows_affected)
+}
+
 /// Delete all `image_meta` rows (clear-all purge). Returns the number removed.
 pub async fn delete_all_image_meta(db: &impl ConnectionTrait) -> Result<u64, AppError> {
     use crate::entity::image_meta;

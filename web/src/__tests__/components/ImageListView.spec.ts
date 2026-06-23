@@ -31,6 +31,7 @@ function makeMocks() {
     imageFn: vi.fn(),
     fetchFn: vi.fn(),
     deleteFn: vi.fn(),
+    clearAllFn: vi.fn(),
   }
 }
 
@@ -49,6 +50,7 @@ function mountView(mocks: ReturnType<typeof makeMocks>, kind: 'poster' | 'logo' 
       imageFn: mocks.imageFn,
       fetchFn: mocks.fetchFn,
       deleteFn: mocks.deleteFn,
+      clearAllFn: mocks.clearAllFn,
     },
     global: {
       plugins: [createPinia(), router, [VueQueryPlugin, { queryClient }]],
@@ -56,6 +58,7 @@ function mountView(mocks: ReturnType<typeof makeMocks>, kind: 'poster' | 'logo' 
         Button: {
           template: '<button @click="$emit(\'click\', $event)" :disabled="disabled"><slot /></button>',
           props: ['disabled', 'variant', 'size', 'type'],
+          emits: ['click'],
         },
         Skeleton: { template: '<div data-testid="skeleton" />' },
         Table: { template: '<table><slot /></table>' },
@@ -279,5 +282,63 @@ describe('ImageListView', () => {
     await flushPromises()
 
     expect(mocks.deleteFn).toHaveBeenCalledWith('imdb', 'tt0111161_t_de@imc', 'variant')
+  })
+
+  it('clears every image of the kind via the header "Clear" button', async () => {
+    const mocks = makeMocks()
+    mocks.listFn.mockResolvedValue({ ok: true, json: () => Promise.resolve(sampleResponse) })
+    mocks.clearAllFn.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, meta_deleted: 2 }) })
+
+    const wrapper = mountView(mocks)
+    await flushPromises()
+
+    // The header button opens the confirm dialog (which adds a second "Clear posters" button).
+    const trigger = wrapper.findAll('button').find((b) => b.text().trim() === 'Clear posters')
+    expect(trigger).toBeDefined()
+    await trigger!.trigger('click')
+    await flushPromises()
+
+    const confirmButtons = wrapper.findAll('button').filter((b) => b.text().trim() === 'Clear posters')
+    expect(confirmButtons.length).toBe(2)
+    await confirmButtons[confirmButtons.length - 1]!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.clearAllFn).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('Cleared 2 cached posters')
+  })
+
+  it('uses the singular noun when one image is cleared', async () => {
+    const mocks = makeMocks()
+    mocks.listFn.mockResolvedValue({ ok: true, json: () => Promise.resolve(sampleResponse) })
+    mocks.clearAllFn.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, meta_deleted: 1 }) })
+
+    const wrapper = mountView(mocks)
+    await flushPromises()
+    await wrapper.findAll('button').find((b) => b.text().trim() === 'Clear posters')!.trigger('click')
+    await flushPromises()
+    const confirm = wrapper.findAll('button').filter((b) => b.text().trim() === 'Clear posters')
+    await confirm[confirm.length - 1]!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Cleared 1 cached poster.')
+  })
+
+  it('shows an error and keeps the dialog open when clear fails', async () => {
+    const mocks = makeMocks()
+    mocks.listFn.mockResolvedValue({ ok: true, json: () => Promise.resolve(sampleResponse) })
+    mocks.clearAllFn.mockResolvedValue({ ok: false, status: 500, text: () => Promise.resolve(JSON.stringify({ error: 'boom' })) })
+
+    const wrapper = mountView(mocks)
+    await flushPromises()
+    await wrapper.findAll('button').find((b) => b.text().trim() === 'Clear posters')!.trigger('click')
+    await flushPromises()
+    const confirm = wrapper.findAll('button').filter((b) => b.text().trim() === 'Clear posters')
+    await confirm[confirm.length - 1]!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.clearAllFn).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('boom')
+    // Dialog stays open (the confirm button is still present).
+    expect(wrapper.findAll('button').filter((b) => b.text().trim() === 'Clear posters').length).toBe(2)
   })
 })

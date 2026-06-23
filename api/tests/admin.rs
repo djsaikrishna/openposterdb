@@ -658,6 +658,10 @@ async fn purge_endpoints_require_auth() {
 
     let cases = [
         ("POST", "/api/admin/cache/purge"),
+        ("DELETE", "/api/admin/posters"),
+        ("DELETE", "/api/admin/logos"),
+        ("DELETE", "/api/admin/backdrops"),
+        ("DELETE", "/api/admin/episodes"),
         ("DELETE", "/api/admin/posters/imdb/tt0111161"),
         ("DELETE", "/api/admin/logos/imdb/tt0111161"),
         ("DELETE", "/api/admin/backdrops/imdb/tt0111161"),
@@ -1034,4 +1038,56 @@ async fn purge_all_external_cache_only_skips_disk() {
     // DB is still cleared; no cache directory is ever created.
     assert_eq!(openposterdb_api::services::db::count_image_meta(&state.db).await.unwrap(), 0);
     assert!(!std::path::Path::new(&cache_dir).exists());
+}
+
+#[tokio::test]
+async fn clear_posters_removes_only_posters() {
+    use openposterdb_api::cache::{self, ImageType};
+    use openposterdb_api::entity::image_meta;
+    use sea_orm::EntityTrait;
+
+    let cache_dir = std::env::temp_dir()
+        .join(format!("opdb-clear-kind-test-{}", std::process::id()))
+        .to_string_lossy()
+        .to_string();
+    let _ = std::fs::remove_dir_all(&cache_dir);
+
+    let (app, state) = common::setup_test_app_with_options(common::TestAppOptions {
+        cache_dir_override: Some(cache_dir.clone()),
+        ..Default::default()
+    })
+    .await;
+    let token = common::setup_admin(&app).await;
+
+    // Two posters + one logo, on disk and in image_meta.
+    for v in ["tt1@i", "tt2@i"] {
+        let p = cache::typed_cache_path(&cache_dir, ImageType::Poster, "imdb", v).unwrap();
+        cache::write(&p, b"x").await.unwrap();
+        cache::upsert_meta_db(&state.db, &format!("imdb/{v}"), None, ImageType::Poster).await.unwrap();
+    }
+    let logo_path = cache::typed_cache_path(&cache_dir, ImageType::Logo, "imdb", "tt1_l@i").unwrap();
+    cache::write(&logo_path, b"x").await.unwrap();
+    cache::upsert_meta_db(&state.db, "imdb/tt1_l@i", None, ImageType::Logo).await.unwrap();
+
+    let req = Request::builder()
+        .method("DELETE")
+        .uri("/api/admin/posters")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["dir_cleared"], true);
+    assert_eq!(json["meta_deleted"], 2);
+
+    // The posters dir is staged aside (gone); the logo dir + rows are untouched.
+    assert!(!std::path::Path::new(&cache_dir).join("posters").exists());
+    assert!(std::path::Path::new(&cache_dir).join("logos/imdb/tt1_l@i.png").exists());
+    assert!(image_meta::Entity::find_by_id("imdb/tt1@i").one(&state.db).await.unwrap().is_none());
+    assert!(image_meta::Entity::find_by_id("imdb/tt2@i").one(&state.db).await.unwrap().is_none());
+    assert!(image_meta::Entity::find_by_id("imdb/tt1_l@i").one(&state.db).await.unwrap().is_some());
+
+    let _ = std::fs::remove_dir_all(&cache_dir);
 }

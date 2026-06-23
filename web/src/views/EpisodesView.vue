@@ -10,5 +10,6 @@ import ImageListView from '@/components/ImageListView.vue'
     :image-fn="adminApi.getEpisodeImage"
     :fetch-fn="adminApi.fetchEpisode"
     :delete-fn="adminApi.purgeEpisode"
+    :clear-all-fn="adminApi.clearEpisodes"
   />
 </template>

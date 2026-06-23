@@ -10,5 +10,6 @@ import ImageListView from '@/components/ImageListView.vue'
     :image-fn="adminApi.getBackdropImage"
     :fetch-fn="adminApi.fetchBackdrop"
     :delete-fn="adminApi.purgeBackdrop"
+    :clear-all-fn="adminApi.clearBackdrops"
   />
 </template>

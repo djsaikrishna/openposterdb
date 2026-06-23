@@ -6,7 +6,6 @@ import DashboardView from '@/views/DashboardView.vue'
 
 const mockAdminApi = vi.hoisted(() => ({
   getStats: vi.fn(),
-  purgeAll: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -40,12 +39,10 @@ function mountView() {
         CardContent: { template: '<div><slot /></div>' },
         Skeleton: { template: '<div data-testid="skeleton" />' },
         RefreshCw: { template: '<span />' },
-        Trash2: { template: '<span />' },
-        Loader2: { template: '<span />' },
-        Dialog: { template: '<div v-if="open"><slot /></div>', props: ['open'] },
-        DialogContent: { template: '<div><slot /></div>' },
-        DialogHeader: { template: '<div><slot /></div>' },
-        DialogTitle: { template: '<div><slot /></div>' },
+        ClearCacheButton: {
+          template: '<button @click="$emit(\'cleared\', \'Cache cleared — removed 42 cached images.\')">Clear cache</button>',
+          emits: ['cleared'],
+        },
       },
     },
   })
@@ -114,32 +111,24 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('99')
   })
 
-  it('clears the cache through the confirm dialog', async () => {
+  it('shows a message and refetches stats when the cache is cleared', async () => {
     mockAdminApi.getStats.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(sampleStats),
-    })
-    mockAdminApi.purgeAll.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ ok: true, external_cache_only: false, dirs_cleared: 4, meta_deleted: 42, ratings_deleted: 10 }),
     })
 
     const wrapper = mountView()
     await flushPromises()
 
-    // Open the confirm dialog.
-    const trigger = wrapper.findAll('button').find((b) => b.text().includes('Clear cache'))
-    expect(trigger).toBeDefined()
-    await trigger!.trigger('click')
+    mockAdminApi.getStats.mockClear()
+
+    // ClearCacheButton owns the confirm flow; here it emits `cleared` on click.
+    const clearButton = wrapper.findAll('button').find((b) => b.text().includes('Clear cache'))
+    expect(clearButton).toBeDefined()
+    await clearButton!.trigger('click')
     await flushPromises()
 
-    // The dialog adds a second "Clear cache" button (the destructive confirm).
-    const confirmButtons = wrapper.findAll('button').filter((b) => b.text().trim() === 'Clear cache')
-    expect(confirmButtons.length).toBe(2)
-    await confirmButtons[confirmButtons.length - 1].trigger('click')
-    await flushPromises()
-
-    expect(mockAdminApi.purgeAll).toHaveBeenCalled()
     expect(wrapper.text()).toContain('Cache cleared')
+    expect(mockAdminApi.getStats).toHaveBeenCalled() // refetched after clear
   })
 })

@@ -203,6 +203,17 @@ describe('api', () => {
     expect(options.method).toBe('POST')
   })
 
+  it('adminApi.clearPosters calls DELETE on the posters collection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.clearPosters()
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/posters')
+    expect(options.method).toBe('DELETE')
+  })
+
   it('adminApi.purgePoster calls DELETE with the title id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
     vi.stubGlobal('fetch', fetchMock)

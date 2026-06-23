@@ -10,6 +10,7 @@ vi.mock('@/lib/api', () => ({
     getPosterImage: vi.fn(),
     fetchPoster: vi.fn(),
     purgePoster: vi.fn(),
+    clearPosters: vi.fn(),
   },
 }))
 
@@ -30,5 +31,6 @@ describe('PostersView', () => {
     expect(imageList.props('imageFn')).toBe(adminApi.getPosterImage)
     expect(imageList.props('fetchFn')).toBe(adminApi.fetchPoster)
     expect(imageList.props('deleteFn')).toBe(adminApi.purgePoster)
+    expect(imageList.props('clearAllFn')).toBe(adminApi.clearPosters)
   })
 })
