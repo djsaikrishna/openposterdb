@@ -826,6 +826,7 @@ async fn purge_all_clears_disk_db_and_memory() {
     assert_eq!(json["meta_deleted"], 2);
     assert_eq!(json["ratings_deleted"], 1);
     assert_eq!(json["external_cache_only"], false);
+    assert_eq!(json["dirs_cleared"], 1); // only posters/ existed
 
     assert_eq!(db::count_image_meta(&state.db).await.unwrap(), 0);
     assert!(!std::path::Path::new(&cache_dir).join("posters").exists());
@@ -952,4 +953,85 @@ async fn purge_poster_variant_clears_only_that_key() {
     assert!(state.image_inflight.get(sibling_key).await.is_some());
 
     let _ = std::fs::remove_dir_all(&cache_dir);
+}
+
+#[tokio::test]
+async fn clear_all_stages_aside_then_background_removes_and_sweeps() {
+    use openposterdb_api::cache;
+
+    let cache_dir = std::env::temp_dir()
+        .join(format!("opdb-stage-test-{}", std::process::id()))
+        .to_string_lossy()
+        .to_string();
+    let _ = std::fs::remove_dir_all(&cache_dir);
+
+    // Seed three cache subdirs (incl. the preview thumbnails) with files; leave the rest absent.
+    for sub in ["posters", "base", "preview"] {
+        std::fs::create_dir_all(format!("{cache_dir}/{sub}/imdb")).unwrap();
+        std::fs::write(format!("{cache_dir}/{sub}/imdb/x.jpg"), b"x").unwrap();
+    }
+
+    // Staging renames the existing subdirs aside instantly (rename, not delete).
+    let staged = cache::stage_cache_for_clear(&cache_dir).await.unwrap();
+    assert_eq!(staged.len(), 3);
+    assert!(!std::path::Path::new(&cache_dir).join("posters").exists());
+    assert!(!std::path::Path::new(&cache_dir).join("base").exists());
+    assert!(!std::path::Path::new(&cache_dir).join("preview").exists());
+    for p in &staged {
+        assert!(p.exists());
+        assert!(p.file_name().unwrap().to_str().unwrap().starts_with(".purging."));
+    }
+
+    // Background removal clears the staged dirs entirely.
+    cache::remove_staged_dirs(staged).await;
+    let leftovers: Vec<_> = std::fs::read_dir(&cache_dir).unwrap().filter_map(|e| e.ok()).collect();
+    assert!(leftovers.is_empty(), "staged dirs should be gone after removal");
+
+    // Startup sweep removes a leftover staged dir but spares a real cache subdir.
+    std::fs::create_dir_all(format!("{cache_dir}/.purging.posters.123-0/imdb")).unwrap();
+    std::fs::create_dir_all(format!("{cache_dir}/posters/imdb")).unwrap();
+    cache::cleanup_staged_dirs(&cache_dir).await.unwrap();
+    assert!(!std::path::Path::new(&cache_dir).join(".purging.posters.123-0").exists());
+    assert!(std::path::Path::new(&cache_dir).join("posters").exists());
+
+    let _ = std::fs::remove_dir_all(&cache_dir);
+}
+
+#[tokio::test]
+async fn purge_all_external_cache_only_skips_disk() {
+    use openposterdb_api::cache::{self, ImageType};
+
+    let cache_dir = std::env::temp_dir()
+        .join(format!("opdb-purge-all-eco-{}", std::process::id()))
+        .to_string_lossy()
+        .to_string();
+    let _ = std::fs::remove_dir_all(&cache_dir);
+
+    let (app, state) = common::setup_test_app_with_options(common::TestAppOptions {
+        external_cache_only: true,
+        cache_dir_override: Some(cache_dir.clone()),
+        ..Default::default()
+    })
+    .await;
+    let token = common::setup_admin(&app).await;
+
+    cache::upsert_meta_db(&state.db, "imdb/tt1@i", None, ImageType::Poster).await.unwrap();
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/admin/cache/purge")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["external_cache_only"], true);
+    assert_eq!(json["dirs_cleared"], 0); // disk staging skipped under EXTERNAL_CACHE_ONLY
+    assert_eq!(json["meta_deleted"], 1);
+
+    // DB is still cleared; no cache directory is ever created.
+    assert_eq!(openposterdb_api::services::db::count_image_meta(&state.db).await.unwrap(), 0);
+    assert!(!std::path::Path::new(&cache_dir).exists());
 }

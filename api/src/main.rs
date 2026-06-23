@@ -108,6 +108,16 @@ async fn main() {
         tokio::fs::create_dir_all(&config.cache_dir)
             .await
             .expect("failed to create cache dir");
+        // Sweep cache dirs left renamed-aside by a clear-all that was interrupted
+        // (crash/restart) before its background removal finished. Run it off the
+        // boot path so a large leftover can't delay the server coming up — the
+        // staged dirs are inert (never served) until removed.
+        let staged_cache_dir = config.cache_dir.clone();
+        tokio::spawn(async move {
+            if let Err(e) = openposterdb_api::cache::cleanup_staged_dirs(&staged_cache_dir).await {
+                tracing::warn!(error = %e, "failed to sweep leftover staged cache dirs at startup");
+            }
+        });
     }
     tokio::fs::create_dir_all(&config.db_dir)
         .await

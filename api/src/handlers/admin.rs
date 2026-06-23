@@ -568,7 +568,9 @@ pub struct PurgeTitleResponse {
 pub struct PurgeAllResponse {
     pub ok: bool,
     pub external_cache_only: bool,
-    pub dirs_removed: u64,
+    /// Number of on-disk cache subdirectories cleared (renamed aside for
+    /// background removal). 0 under `EXTERNAL_CACHE_ONLY`.
+    pub dirs_cleared: u64,
     pub meta_deleted: u64,
     pub ratings_deleted: u64,
 }
@@ -750,10 +752,19 @@ pub async fn purge_episode(
 pub async fn purge_all(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<PurgeAllResponse>, AppError> {
-    let dirs_removed = if state.config.external_cache_only {
+    // Rename the cache subdirs aside (O(1) regardless of file count) so the cache
+    // is cleared instantly, then delete the staged dirs on a background task — a
+    // huge cache (hundreds of thousands of files) must not block the request. Any
+    // staged dir left by a crash mid-delete is swept on the next startup.
+    let dirs_cleared = if state.config.external_cache_only {
         0
     } else {
-        cache::clear_all_files(&state.config.cache_dir).await?
+        let staged = cache::stage_cache_for_clear(&state.config.cache_dir).await?;
+        let count = staged.len() as u64;
+        if !staged.is_empty() {
+            tokio::spawn(cache::remove_staged_dirs(staged));
+        }
+        count
     };
 
     let meta_deleted = db::delete_all_image_meta(&state.db).await?;
@@ -779,7 +790,7 @@ pub async fn purge_all(
     Ok(Json(PurgeAllResponse {
         ok: true,
         external_cache_only: state.config.external_cache_only,
-        dirs_removed,
+        dirs_cleared,
         meta_deleted,
         ratings_deleted,
     }))

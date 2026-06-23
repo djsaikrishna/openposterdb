@@ -121,7 +121,7 @@ describe('DashboardView', () => {
     })
     mockAdminApi.purgeAll.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ ok: true, external_cache_only: false, dirs_removed: 4, meta_deleted: 42, ratings_deleted: 10 }),
+      json: () => Promise.resolve({ ok: true, external_cache_only: false, dirs_cleared: 4, meta_deleted: 42, ratings_deleted: 10 }),
     })
 
     const wrapper = mountView()

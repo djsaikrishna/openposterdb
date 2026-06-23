@@ -201,6 +201,11 @@ pub fn title_file_match(cache_value: &str, id_value: &str) -> bool {
 /// Delete every rendered file for one logical title under
 /// `{cache_dir}/{subdir}/{id_type}/`. Returns the number of files removed; a
 /// missing directory (e.g. nothing cached yet, or `EXTERNAL_CACHE_ONLY`) yields 0.
+///
+/// All titles of an `id_type` share one directory, so this scans the whole
+/// directory (O(files in it), streamed one entry at a time) to find the title's
+/// matches — acceptable for a rare admin action. The far larger clear-all path
+/// avoids any scan via rename-aside (see [`stage_cache_for_clear`]).
 pub async fn purge_title_files(
     cache_dir: &str,
     image_type: ImageType,
@@ -258,21 +263,82 @@ pub async fn purge_variant_file(
     }
 }
 
-/// Remove all on-disk cache contents: rendered images (posters/logos/backdrops/
-/// episodes), raw downloads under `base/`, and admin preview thumbnails. The
-/// directories are recreated lazily by [`write`]. Returns the number of
-/// top-level cache subdirectories that were removed (missing ones are skipped).
-pub async fn clear_all_files(cache_dir: &str) -> Result<u64, AppError> {
-    let mut removed = 0u64;
-    for sub in ["posters", "logos", "backdrops", "episodes", "base", "preview"] {
+/// Top-level cache subdirectories holding purgeable contents: rendered images
+/// (posters/logos/backdrops/episodes), raw downloads under `base/`, and admin
+/// preview thumbnails. All are recreated lazily by [`write`].
+const CACHE_SUBDIRS: [&str; 6] = ["posters", "logos", "backdrops", "episodes", "base", "preview"];
+
+/// Filename prefix for cache subdirs that have been renamed aside by
+/// [`stage_cache_for_clear`] and are awaiting background removal. The leading
+/// dot keeps them out of the way; nothing reads them.
+const PURGE_PREFIX: &str = ".purging.";
+
+/// A process-unique token for staged-removal directory names. Combines wall
+/// time with a monotonic counter so concurrent clear-alls never collide.
+fn purge_stamp() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{nanos}-{n}")
+}
+
+/// Clear the on-disk cache *instantly* by atomically renaming each cache subdir
+/// to a sibling temp directory (an O(1) operation regardless of how many files
+/// it holds). New requests immediately miss and re-render. Returns the staged
+/// temp paths — the (potentially slow) recursive removal is the caller's job,
+/// typically [`remove_staged_dirs`] on a background task. Missing subdirs are
+/// skipped.
+pub async fn stage_cache_for_clear(cache_dir: &str) -> Result<Vec<PathBuf>, AppError> {
+    let stamp = purge_stamp();
+    let mut staged = Vec::new();
+    for sub in CACHE_SUBDIRS {
         let dir = Path::new(cache_dir).join(sub);
-        match fs::remove_dir_all(&dir).await {
-            Ok(()) => removed += 1,
+        let tmp = Path::new(cache_dir).join(format!("{PURGE_PREFIX}{sub}.{stamp}"));
+        match fs::rename(&dir, &tmp).await {
+            Ok(()) => staged.push(tmp),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(AppError::Io(e)),
         }
     }
-    Ok(removed)
+    Ok(staged)
+}
+
+/// Recursively remove staged temp directories. Slow for large caches, so run it
+/// off the request path (e.g. `tokio::spawn`). Errors are logged, not returned —
+/// any leftovers are swept on the next startup by [`cleanup_staged_dirs`].
+pub async fn remove_staged_dirs(dirs: Vec<PathBuf>) {
+    for dir in dirs {
+        if let Err(e) = fs::remove_dir_all(&dir).await {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(error = %e, dir = %dir.display(), "failed to remove staged cache dir");
+            }
+        }
+    }
+}
+
+/// Sweep any staged-removal temp dirs left behind by a crash mid-removal. Call
+/// at startup so an interrupted clear-all doesn't leak disk space. A missing
+/// `cache_dir` is a no-op.
+pub async fn cleanup_staged_dirs(cache_dir: &str) -> Result<(), AppError> {
+    let mut read_dir = match fs::read_dir(cache_dir).await {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(AppError::Io(e)),
+    };
+    let mut leftovers = Vec::new();
+    while let Some(entry) = read_dir.next_entry().await? {
+        if let Some(name) = entry.file_name().to_str() {
+            if name.starts_with(PURGE_PREFIX) {
+                leftovers.push(entry.path());
+            }
+        }
+    }
+    remove_staged_dirs(leftovers).await;
+    Ok(())
 }
 
 pub async fn read_meta_db(db: &DatabaseConnection, cache_key: &str) -> Option<String> {
