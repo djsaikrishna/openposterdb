@@ -2,7 +2,7 @@
 > This project is developed with the assistance of AI code generation tools. AI-generated code is reviewed and tested before being merged, but if you encounter any issues, please feel free to open an issue or submit a pull request.
 
 > [!WARNING]
-> This project is in active development. Expect breaking changes to the database schema and cache key format until we reach a stable release. You may need to delete your database or cache after updating in order to not retain orphaned cache items.
+> This project is in active development. Expect breaking changes to the database schema and cache key format until we reach a stable release. You may need to delete your database or cache after updating in order to not retain orphaned cache items. The admin dashboard's **Clear cache** button (and the per-title purge in each image list) drops stale or orphaned cache entries without deleting the database volume — see [Clearing the Cache](#clearing-the-cache).
 
 # OpenPosterDB (OPDB)
 
@@ -226,7 +226,7 @@ Heights are representative for a standard ~2:3 source under the default `native`
 - **Configurable per API key** — Override image source, language, and textless settings per key, or set global defaults
 - **ID resolution** — Accepts IMDb, TMDB, or TVDB IDs
 - **Multi-layer caching** — In-memory (moka), filesystem, and SQLite metadata with background refresh and request coalescing
-- **Admin UI** — Vue 3 web panel for API key management, poster settings, and global configuration
+- **Admin UI** — Vue 3 web panel for API key management, poster settings, global configuration, and cache purging (clear everything, or a single title across all rendered variants)
 - **Auth** — Argon2 password hashing, JWT access tokens, rotating refresh tokens, API key access for poster endpoints
 
 ## Tech Stack
@@ -503,6 +503,27 @@ When `EXTERNAL_CACHE_ONLY=true`, the server skips image file writes to disk (ren
 - Best used together with `ENABLE_CDN_REDIRECTS=true` so the CDN absorbs the vast majority of traffic
 - SQLite metadata is **always** written, even with this flag — `image_meta` stores release dates (for CDN TTL computation) and `available_ratings` records which rating sources have data for each movie (so cache keys can be reconstructed without external API calls on cache hits)
 - The Docker volume is still required for the SQLite database (`DB_DIR`), even when image caching is fully external
+
+### Clearing the Cache
+
+The admin panel can purge cached images without touching the database volume or restarting the container — useful when a poster rendered from a bad source image, when global render settings changed and left orphaned variants behind, or for general cache hygiene.
+
+- **Clear everything** — the **Clear cache** button on the dashboard (and on the **Settings** page) wipes all rendered images, raw downloads, and settings-preview thumbnails on disk, every `image_meta` / `available_ratings` row, and every in-memory image cache (including the settings-preview cache and the upstream TMDB/Fanart.tv image-list and ratings caches). Images regenerate from scratch on the next request, so the first load of each title afterwards is slower. This is the path that guarantees a fully clean re-fetch. The on-disk wipe is **instant regardless of cache size** — the cache directories are atomically renamed aside and the (potentially slow) recursive delete runs in the background — so the request returns immediately even with hundreds of thousands of files, and an interrupted delete is swept on the next startup.
+- **Clear one image type** — the **Clear posters / logos / backdrops / episodes** button at the top of each list view removes all cached images of just that kind (its rendered directory + `image_meta` rows), leaving the other kinds and the shared `available_ratings` index untouched. Like clear-all, the on-disk wipe is staged aside and removed in the background.
+- **Purge one title, or one variant** — the trash button on a row in the poster/logo/backdrop/episode lists opens a dialog with two choices:
+  - **Entire title** removes *every* cached variant of that title for that image kind. One title maps to many cache entries (the key encodes ratings, position, style, size, language, …), so this prefix-matches the title id rather than deleting a single key.
+  - **This variant** removes only the single rendered entry the row represents (one exact cache key), leaving the title's other variants and its shared `available_ratings` index untouched.
+
+Each purge clears the relevant layers consistently: the in-memory render caches, the rendered files on disk, and the SQLite metadata (`image_meta` plus the title's `available_ratings` index, so the next request re-resolves its sources).
+
+A per-title purge is scoped to **rendered output**. A couple of things it deliberately does not reach, because they self-heal:
+
+- **Upstream source caches** (the TMDB/Fanart.tv image lists and aggregated ratings) are keyed by the resolved TMDB id and expire on their own short TTL (~30–60 min). A re-render right after a per-title purge may briefly reuse them, so for an immediate clean re-fetch of changed upstream art/ratings use **Clear cache** instead.
+- **Cross-ID copies** — the same title cached under a different id form (e.g. an `imdb` request and a `tmdb` request resolving to the same movie) live under a different `id_type`. A purge targets the id form you pass; the alternate copy regenerates or expires on its own.
+
+The matching API endpoints (behind the admin auth middleware) are `POST /api/admin/cache/purge` (clear everything), `DELETE /api/admin/{posters,logos,backdrops,episodes}` (clear one kind), and `DELETE /api/admin/{posters,logos,backdrops,episodes}/{id_type}/{id_value}` (purge one title — or a single variant with `?scope=variant`, in which case `{id_value}` is the full cache value rather than the bare title id).
+
+Under `EXTERNAL_CACHE_ONLY`, there are no files on disk to remove and the CDN's cached copies cannot be purged from here, so a purge clears only the in-memory caches and SQLite metadata. The admin UI surfaces this as a partial purge.
 
 ## Deploying to the Public Internet
 
